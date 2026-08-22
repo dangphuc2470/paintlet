@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { usePaintStore } from "./state/store";
+import { engine, usePaintStore } from "./state/store";
 import { stageHooks } from "./state/stageHooks";
 import type { ToolId } from "./engine/types";
 import { installAppMenu } from "./menu/appMenu";
@@ -7,7 +7,6 @@ import * as A from "./actions";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
-import { ask } from "@tauri-apps/plugin-dialog";
 import { TitleBar } from "./components/TitleBar";
 import { Toolbar } from "./components/Toolbar";
 import { CanvasStage } from "./components/CanvasStage";

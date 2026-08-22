@@ -30,8 +30,8 @@ export function SavePromptDialog({
         if (isCancelled) return;
 
         if (action === "save") {
-          const saved = await saveImage(false);
-          if (saved) {
+          await saveImage(false);
+          if (!usePaintStore.getState().isDirty) {
             onClose();
             onProceed?.();
           } else {

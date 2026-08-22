@@ -1,8 +1,7 @@
 import type { ReactNode } from "react";
 import { engine, usePaintStore } from "../state/store";
-import { isFreehandTool, isImplemented, isShapeTool } from "../tools/registry";
+import { isImplemented } from "../tools/registry";
 import type { ToolId } from "../engine/types";
-import { cx } from "../lib/cx";
 import { Icon, type IconName } from "./Icon";
 import { ToolButton } from "./ToolButton";
 import { ColorControls } from "./ColorControls";
@@ -40,9 +39,6 @@ const SHAPE_TOOLS: ToolDef[] = [
   { id: "ellipse", icon: "ellipse", label: "Ellipse" },
   { id: "polygon", icon: "polygon", label: "Polygon" },
 ];
-
-// Shapes draw at one of a few fixed widths (not the continuous pencil slider).
-const SHAPE_SIZES = [1, 3, 5, 8];
 
 // A labeled ribbon group: content on top, a small caption underneath — the
 // Win11 Paint layout the user asked to get closer to.

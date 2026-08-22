@@ -90,59 +90,7 @@ function ToolGrid({ tools }: { tools: ToolDef[] }) {
   );
 }
 
-// A continuous stroke-width slider for the freehand tools (pencil / brush /
-// eraser). Shapes use the discrete picker below instead.
-function SizeSlider() {
-  const brushSize = usePaintStore((s) => s.brushSize);
-  const setBrushSize = usePaintStore((s) => s.setBrushSize);
-  return (
-    <div className="flex items-center gap-2 px-1">
-      <input
-        type="range"
-        min={1}
-        max={64}
-        step={1}
-        value={brushSize}
-        onChange={(e) => setBrushSize(Number(e.target.value))}
-        className="w-28 accent-[var(--vp-accent)]"
-        title={`${brushSize}px`}
-      />
-      <span className="w-8 text-right text-xs tabular-nums text-ink-muted">
-        {brushSize}px
-      </span>
-    </div>
-  );
-}
-
-// Discrete stroke-width picker shown while a shape tool is active.
-function ShapeSizePicker() {
-  const shapeSize = usePaintStore((s) => s.shapeSize);
-  const setShapeSize = usePaintStore((s) => s.setShapeSize);
-  return (
-    <div className="flex items-center gap-0.5">
-      {SHAPE_SIZES.map((n) => (
-        <button
-          key={n}
-          type="button"
-          title={`${n}px`}
-          onClick={() => setShapeSize(n)}
-          className={cx(
-            "h-7 w-8 rounded-md text-xs tabular-nums",
-            shapeSize === n
-              ? "bg-[var(--vp-accent)] text-white"
-              : "text-ink-muted hover:bg-hover",
-          )}
-        >
-          {n}
-        </button>
-      ))}
-    </div>
-  );
-}
-
-// The contextual group between Shapes and Colors: text styling for the Text
-// tool, the fixed-width picker for shapes, the continuous slider for freehand
-// strokes, and nothing for tools with no size (select/lasso/fill/eyedropper).
+// The contextual group between Shapes and Colors: text styling for the Text tool only.
 function ContextGroup() {
   const activeToolId = usePaintStore((s) => s.activeToolId);
   if (activeToolId === "text")
@@ -151,24 +99,6 @@ function ContextGroup() {
         <Divider />
         <Group label="Text">
           <TextOptions />
-        </Group>
-      </>
-    );
-  if (isShapeTool(activeToolId))
-    return (
-      <>
-        <Divider />
-        <Group label="Size">
-          <ShapeSizePicker />
-        </Group>
-      </>
-    );
-  if (isFreehandTool(activeToolId))
-    return (
-      <>
-        <Divider />
-        <Group label="Size">
-          <SizeSlider />
         </Group>
       </>
     );

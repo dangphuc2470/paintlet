@@ -101,6 +101,10 @@ export class CanvasEngine {
     this.emit();
   }
 
+  get isDirty(): boolean {
+    return this.dirty;
+  }
+
   // The store wires this up to mirror engine state into React.
   setOnChange(cb: (c: EngineChange) => void): void {
     this.onChange = cb;
@@ -116,7 +120,7 @@ export class CanvasEngine {
   }
 
   // Rebuild `floatDisplay` from `floatCanvas`, knocking the background color out
-  // to transparent (exact match, like Paint's transparent selection).
+  // to transparent (with tolerance so anti-aliased edges don't leave white halos).
   private rebuildFloatDisplay(): void {
     if (!this.floatCanvas) {
       this.floatDisplay = null;
@@ -132,7 +136,13 @@ export class CanvasEngine {
     const img = ctx.getImageData(0, 0, src.width, src.height);
     const d = img.data;
     for (let i = 0; i < d.length; i += 4) {
-      if (d[i] === br && d[i + 1] === bg && d[i + 2] === bb) d[i + 3] = 0;
+      const dr = Math.abs(d[i] - br);
+      const dg = Math.abs(d[i + 1] - bg);
+      const db = Math.abs(d[i + 2] - bb);
+      // Knock out background color and near-background pixels
+      if (dr <= 16 && dg <= 16 && db <= 16) {
+        d[i + 3] = 0;
+      }
     }
     ctx.putImageData(img, 0, 0);
     this.floatDisplay = c;
@@ -563,6 +573,7 @@ export class CanvasEngine {
   // transparent outside it) and the hole matches the outline, not the box.
   beginFloat(bgColor: string): void {
     if (!this.selection || this.floatCanvas) return;
+    this.bgColor = bgColor;
     const r = this.selection;
     const path = this.selPath();
     const fc = document.createElement("canvas");
@@ -588,6 +599,27 @@ export class CanvasEngine {
     else this.base.fillRect(r.x, r.y, r.w, r.h);
     this.base.restore();
     this.dirty = true;
+    this.emit();
+  }
+
+  // Stamp a copy of the floating content onto the base without discarding the float
+  // (Windows Paint Shift-move trail / smear effect).
+  stampFloat(): void {
+    if (!this.floatCanvas) return;
+    this.base.drawImage(this.floatDisplay ?? this.floatCanvas, this.floatX, this.floatY);
+    this.dirty = true;
+  }
+
+  // Nudge selection/float by delta (dx, dy). If stamp is true (Shift key held), stamps along the path!
+  nudgeSelection(dx: number, dy: number, stamp = false, bgColor = "#ffffff"): void {
+    if (!this.hasSelectionOrFloat()) return;
+    if (!this.floatCanvas) {
+      this.beginFloat(bgColor);
+    }
+    if (stamp) {
+      this.stampFloat();
+    }
+    this.moveFloatTo(this.floatX + dx, this.floatY + dy);
     this.emit();
   }
 

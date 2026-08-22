@@ -68,24 +68,42 @@ export const eraserCursor = svgCursor(
 
 export const brushCursor = svgCursor('<circle cx="12" cy="12" r="5"/>', 12, 12, "crosshair");
 
-// A brush/eraser cursor whose outline matches the size actually painted on
-// screen (image px × zoom), so the pointer telegraphs coverage instead of a
-// fixed dot. Diameter is clamped to a grabbable, browser-supported range (very
-// large cursors are silently dropped by the OS); the hotspot stays centered. A
-// round outline suits the brush's round cap, a square one the eraser's.
-export function sizedCursor(diameter: number, shape: "circle" | "square"): string {
-  const d = Math.max(6, Math.min(128, Math.round(diameter)));
-  const pad = 3; // room for the white underlay stroke, so the edge isn't clipped
+export const subtleCrosshairCursor = cursorUrl(
+  `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#000000" stroke-opacity="0.4">` +
+  `<line x1="8" y1="2" x2="8" y2="14" stroke-width="1"/>` +
+  `<line x1="2" y1="8" x2="14" y2="8" stroke-width="1"/>` +
+  `<circle cx="8" cy="8" r="1.2" fill="#000000" fill-opacity="0.5"/>` +
+  `</svg>`,
+  8,
+  8,
+  "crosshair",
+);
+export function sizedCursor(
+  diameter: number,
+  shape: "circle" | "square",
+  color: string = "#000000",
+): string {
+  const d = Math.max(2, Math.min(128, Math.round(diameter)));
+  const pad = 2; // room for outline
   const size = d + pad * 2;
   const c = size / 2; // center = hotspot
-  const glyph =
-    shape === "circle"
-      ? `<circle cx="${c}" cy="${c}" r="${d / 2}"/>`
-      : `<rect x="${pad}" y="${pad}" width="${d}" height="${d}"/>`;
-  const svg =
-    `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" ` +
-    `fill="none" stroke-linecap="round" stroke-linejoin="round">` +
-    `<g stroke="#ffffff" stroke-width="3">${glyph}</g>` +
-    `<g stroke="#000000" stroke-width="1">${glyph}</g></svg>`;
+  
+  // Safe color for SVG
+  const safeColor = color.startsWith("#") || color.startsWith("rgb") ? color : "#000000";
+
+  let glyph = "";
+  if (shape === "circle") {
+    glyph = `
+      <circle cx="${c}" cy="${c}" r="${d / 2}" stroke="#ffffff" stroke-width="2.2" fill="none"/>
+      <circle cx="${c}" cy="${c}" r="${d / 2}" stroke="#000000" stroke-width="1" fill="${safeColor}"/>
+    `;
+  } else {
+    glyph = `
+      <rect x="${pad}" y="${pad}" width="${d}" height="${d}" stroke="#ffffff" stroke-width="2.2" fill="none"/>
+      <rect x="${pad}" y="${pad}" width="${d}" height="${d}" stroke="#000000" stroke-width="1" fill="#ffffff"/>
+    `;
+  }
+
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">${glyph}</svg>`;
   return cursorUrl(svg, c, c, "crosshair");
 }

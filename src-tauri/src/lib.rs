@@ -169,6 +169,58 @@ fn save_image_dialog(
     }
 }
 
+// Native macOS alert prompt for unsaved changes using real NSAlert (100% native UI,
+// real system font, real system accent colors, real system button style).
+#[tauri::command]
+fn prompt_save_dialog(
+    app: tauri::AppHandle,
+    document_name: String,
+) -> Result<String, String> {
+    #[cfg(target_os = "macos")]
+    {
+        let (tx, rx) = std::sync::mpsc::channel();
+        app.run_on_main_thread(move || {
+            use objc2_app_kit::{NSAlert, NSAlertStyle};
+            use objc2_foundation::NSString;
+
+            let mtm = objc2::MainThreadMarker::new().expect("run_on_main_thread ran off the main thread");
+            let alert = NSAlert::new(mtm);
+            alert.setMessageText(&NSString::from_str(&format!(
+                "Do you want to save the changes made to the document \u{201C}{}\u{201D}?",
+                document_name
+            )));
+            alert.setInformativeText(&NSString::from_str(
+                "Your changes will be lost if you don\u{2019}t save them.",
+            ));
+            alert.setAlertStyle(NSAlertStyle::Warning);
+            // Button 1: Save (first button = 1000)
+            alert.addButtonWithTitle(&NSString::from_str("Save"));
+            // Button 2: Cancel (second button = 1001)
+            alert.addButtonWithTitle(&NSString::from_str("Cancel"));
+            // Button 3: Don't Save (third button = 1002)
+            alert.addButtonWithTitle(&NSString::from_str("Don\u{2019}t Save"));
+
+            let response = alert.runModal();
+            let res_str = match response {
+                1000 => "save",
+                1001 => "cancel",
+                1002 => "dont_save",
+                _ => "cancel",
+            };
+            let _ = tx.send(res_str.to_string());
+        })
+        .map_err(|e| e.to_string())?;
+
+        rx.recv()
+            .map_err(|_| "the alert closed unexpectedly".to_string())
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (app, document_name);
+        Ok("cancel".to_string())
+    }
+}
+
 // macOS auto-appends items to any menu titled "Edit": "Start Dictation…",
 // "Emoji & Symbols", and (macOS 15.1+) "Writing Tools" / "AutoFill". The first
 // two honor AppKit's NSUserDefaults switches — set them before the menu is
@@ -261,6 +313,7 @@ pub fn run() {
             read_image_file,
             write_image_file,
             save_image_dialog,
+            prompt_save_dialog,
             strip_edit_menu_system_items,
             open_about_window,
             webview_ready

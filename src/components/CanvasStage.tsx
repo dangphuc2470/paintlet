@@ -4,9 +4,7 @@ import { stageHooks } from "../state/stageHooks";
 import { viewport } from "../state/viewport";
 import { screenToCanvas } from "../engine/coords";
 import { getTool, isShapeTool } from "../tools/registry";
-import { clampZoom } from "../lib/zoom";
-import { rgbToHex } from "../engine/color";
-import { sizedCursor } from "../lib/cursors";
+import { subtleCrosshairCursor, sizedCursor } from "../lib/cursors";
 import { HANDLE_CURSOR, selectionHandles, type HandleId } from "../engine/selectionHandles";
 import type { MouseButton, Point, Rect, TextStyle, ToolId } from "../engine/types";
 import type { PointerInfo, ToolContext } from "../tools/Tool";
@@ -60,6 +58,9 @@ export function CanvasStage() {
     cy: number;
     color: string;
   } | null>(null);
+
+  // Direct DOM ref for zero-latency 120Hz/240Hz preview ring tracking
+  const previewRef = useRef<HTMLDivElement>(null);
 
   // Drag state for repositioning the floating text box before it's committed.
   const textDrag = useRef<{
@@ -123,6 +124,7 @@ export function CanvasStage() {
   const zoom = usePaintStore((s) => s.view.zoom);
   const activeToolId = usePaintStore((s) => s.activeToolId);
   const brushSize = usePaintStore((s) => s.brushSize);
+  const shapeSize = usePaintStore((s) => s.shapeSize);
   const color1 = usePaintStore((s) => s.color1);
   const textStyle = usePaintStore((s) => s.textStyle);
   const hasSelection = usePaintStore((s) => s.hasSelection);
@@ -505,19 +507,57 @@ export function CanvasStage() {
       engine.setCanvasSizeAnchored(t.w, t.h, -t.x, -t.y);
   };
 
-  // Esc cancels an in-progress stroke/shape (including a multi-click polygon
-  // or curve between gestures, via the tool's own onKeyDown), or deselects a
-  // finished selection.
+  // Keyboard shortcuts: Esc cancels in-progress actions; Arrow keys nudge selections
+  // with acceleration and Windows 11 Shift-trail stamping.
   useEffect(() => {
+    let arrowRepeatCount = 0;
+    let lastArrowKey = "";
+
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Escape") return;
-      // An open dialog owns Esc: DialogFrame closes on it, and cancelling the
-      // stroke or dropping the selection underneath at the same time would
-      // destroy work nobody asked to lose. Read from the DOM rather than store
-      // flags because the Edit Color popup's open state is local to
-      // ColorControls, so there's no flag to check.
       if (document.querySelector('[role="dialog"]')) return;
       const activeId = usePaintStore.getState().activeToolId;
+
+      // Arrow keys move active selection
+      if (
+        (e.key === "ArrowLeft" ||
+          e.key === "ArrowRight" ||
+          e.key === "ArrowUp" ||
+          e.key === "ArrowDown") &&
+        engine.hasSelectionOrFloat()
+      ) {
+        e.preventDefault();
+        e.stopPropagation();
+
+        if (e.key !== lastArrowKey) {
+          arrowRepeatCount = 0;
+          lastArrowKey = e.key;
+        } else {
+          arrowRepeatCount++;
+        }
+
+        // Acceleration curve: 1px -> 2px -> 4px -> 8px when held
+        const step =
+          arrowRepeatCount < 4
+            ? 1
+            : arrowRepeatCount < 12
+              ? 2
+              : arrowRepeatCount < 24
+                ? 4
+                : 8;
+
+        let dx = 0;
+        let dy = 0;
+        if (e.key === "ArrowLeft") dx = -step;
+        if (e.key === "ArrowRight") dx = step;
+        if (e.key === "ArrowUp") dy = -step;
+        if (e.key === "ArrowDown") dy = step;
+
+        const color2 = usePaintStore.getState().color2;
+        engine.nudgeSelection(dx, dy, e.shiftKey, color2);
+        return;
+      }
+
+      if (e.key !== "Escape") return;
       if (drawing.current) {
         drawing.current = false;
         getTool(activeId)?.onDeactivate?.(makeCtx());
@@ -532,8 +572,20 @@ export function CanvasStage() {
         engine.deselect();
       }
     };
+
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (e.key.startsWith("Arrow")) {
+        arrowRepeatCount = 0;
+        lastArrowKey = "";
+      }
+    };
+
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    window.addEventListener("keyup", onKeyUp);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("keyup", onKeyUp);
+    };
     // makeCtx reads live store state, so an empty dep list is correct here.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -547,9 +599,23 @@ export function CanvasStage() {
     shiftKey: e.shiftKey,
   });
 
+  const updatePreviewPos = (clientX: number, clientY: number) => {
+    if (!previewRef.current || !overlayRef.current) return;
+    const rect = overlayRef.current.getBoundingClientRect();
+    const x = clientX - rect.left;
+    const y = clientY - rect.top;
+    if (x < 0 || y < 0 || x > rect.width || y > rect.height) {
+      previewRef.current.style.display = "none";
+      return;
+    }
+    previewRef.current.style.transform = `translate3d(${x}px, ${y}px, 0) translate(-50%, -50%)`;
+    previewRef.current.style.display = "block";
+  };
+
   const onPointerDown = (e: React.PointerEvent) => {
     // Middle button and space-drag belong to panning, never to tools.
     if (e.button === 1 || spaceHeldRef.current) return;
+    updatePreviewPos(e.clientX, e.clientY);
     // Text tool: place/reposition the floating editor instead of stroking.
     if (activeToolId === "text") {
       // Cancel the browser's post-mousedown focus default, which would blur
@@ -620,6 +686,7 @@ export function CanvasStage() {
   };
 
   const scheduleMove = (e: React.PointerEvent) => {
+    updatePreviewPos(e.clientX, e.clientY);
     lastPointer.current = {
       clientX: e.clientX,
       clientY: e.clientY,
@@ -692,16 +759,20 @@ export function CanvasStage() {
     }
   };
 
-  // The brush/eraser cursor tracks the painted size (image px × zoom) so it
-  // reads as coverage, not a fixed dot; every other tool keeps its static
-  // cursor (precise crosshair, etc.).
-  const toolCursor =
-    activeToolId === "brush"
-      ? sizedCursor(brushSize * zoom, "circle")
-      : activeToolId === "eraser"
-        ? sizedCursor(brushSize * zoom, "square")
-        : (getTool(activeToolId)?.cursor ??
-          (activeToolId === "text" ? "text" : "default"));
+  // The brush/pencil/eraser/shape tools hide the OS cursor entirely ("none"),
+  // and render the live solid circular/square preview directly via previewRef with zero latency.
+  const isPreviewTool =
+    activeToolId === "brush" ||
+    activeToolId === "pencil" ||
+    activeToolId === "eraser" ||
+    activeToolId === "line" ||
+    activeToolId === "curve" ||
+    isShapeTool(activeToolId);
+
+  const toolCursor = isPreviewTool
+    ? "none"
+    : (getTool(activeToolId)?.cursor ??
+      (activeToolId === "text" ? "text" : "default"));
   const cursor = panning
     ? "grabbing"
     : canvasResizeCursor
@@ -745,6 +816,7 @@ export function CanvasStage() {
             onPointerUp={endStroke}
             onPointerCancel={endStroke}
             onPointerLeave={() => {
+              if (previewRef.current) previewRef.current.style.display = "none";
               if (drawing.current) return;
               if (moveRaf.current) {
                 cancelAnimationFrame(moveRaf.current);
@@ -754,6 +826,39 @@ export function CanvasStage() {
               setDropper(null);
             }}
           />
+          {/* Live canvas hover solid preview circle/rect matching Windows 11 Paint (Zero-latency hardware transform) */}
+          {isPreviewTool && !panning && !spaceHeld && !handleCursor && (
+            <div
+              ref={previewRef}
+              className="pointer-events-none absolute left-0 top-0 z-20 will-change-transform"
+              style={{
+                display: "none",
+                width: Math.max(
+                  2,
+                  (isShapeTool(activeToolId) ||
+                  activeToolId === "line" ||
+                  activeToolId === "curve"
+                    ? shapeSize
+                    : brushSize) * zoom,
+                ),
+                height: Math.max(
+                  2,
+                  (isShapeTool(activeToolId) ||
+                  activeToolId === "line" ||
+                  activeToolId === "curve"
+                    ? shapeSize
+                    : brushSize) * zoom,
+                ),
+                backgroundColor:
+                  activeToolId === "eraser"
+                    ? "rgba(255, 255, 255, 0.9)"
+                    : color1,
+                borderRadius: activeToolId === "eraser" ? "2px" : "50%",
+                border: "1px solid rgba(0, 0, 0, 0.8)",
+                boxShadow: "0 0 0 1px rgba(255, 255, 255, 0.85)",
+              }}
+            />
+          )}
           {/* Selection layer: marquee + floating content. Pointer-transparent so
               the overlay below keeps receiving pointer events. */}
           <canvas

@@ -78,6 +78,24 @@ export function saveFileAs(): void {
   void saveImage(true);
 }
 
+export function closeWindow(): void {
+  stageHooks.flushTextEdit?.();
+  if (usePaintStore.getState().isDirty || engine.isDirty) {
+    usePaintStore.getState().openSavePrompt(async () => {
+      const { getCurrentWindow } = await import("@tauri-apps/api/window");
+      await getCurrentWindow().destroy();
+    });
+    return;
+  }
+  import("@tauri-apps/api/window").then(({ getCurrentWindow }) => {
+    getCurrentWindow().destroy();
+  });
+}
+
+export function quitApp(): void {
+  closeWindow();
+}
+
 // — Edit —
 // Undo/redo first cancel any in-progress tool gesture (a half-built polygon or
 // curve) so its rubber-band preview can't linger over the restored pixels.

@@ -28,8 +28,20 @@ export abstract class FreehandTool implements Tool {
     this.drawing = true;
     this.last = p.point;
     this.color = this.colorFor(p, ctx);
-    // A plain click leaves a dot: a zero-length round-capped segment.
-    this.segment(p.point, p.point, ctx);
+    // Draw a solid dot immediately on mouse down so a single click always leaves a point
+    const o = ctx.overlay;
+    o.save();
+    let pt = p.point;
+    if (this.crisp) {
+      const off = oddStrokeOffset(ctx.size);
+      o.translate(off, off);
+      pt = roundPoint(p.point);
+    }
+    o.fillStyle = this.color;
+    o.beginPath();
+    o.arc(pt.x, pt.y, Math.max(0.5, ctx.size / 2), 0, Math.PI * 2);
+    o.fill();
+    o.restore();
   }
 
   onPointerMove(p: PointerInfo, ctx: ToolContext): void {

@@ -1,7 +1,11 @@
-import { DialogFrame } from "./DialogFrame";
+import { useEffect } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { usePaintStore } from "../../state/store";
 import { saveImage } from "../../io/fileIO";
 
+// Native macOS alert prompt for unsaved changes.
+// Invokes real AppKit NSAlert from Rust so it is 100% genuine macOS UI,
+// with exact system fonts, native rounded pill buttons, and user's system accent color.
 export function SavePromptDialog({
   isOpen,
   onClose,
@@ -14,56 +18,46 @@ export function SavePromptDialog({
   const filePath = usePaintStore((s) => s.filePath);
   const name = filePath ? filePath.split("/").pop() : "Untitled";
 
-  if (!isOpen) return null;
+  useEffect(() => {
+    if (!isOpen) return;
+    let isCancelled = false;
 
-  const handleSave = async () => {
-    const saved = await saveImage(false);
-    if (saved) {
-      onClose();
-      onProceed?.();
+    async function runPrompt() {
+      try {
+        const action = await invoke<string>("prompt_save_dialog", {
+          documentName: name ?? "Untitled",
+        });
+        if (isCancelled) return;
+
+        if (action === "save") {
+          const saved = await saveImage(false);
+          if (saved) {
+            onClose();
+            onProceed?.();
+          } else {
+            onClose();
+          }
+        } else if (action === "dont_save") {
+          usePaintStore.getState().setIsDirty(false);
+          onClose();
+          onProceed?.();
+        } else {
+          // "cancel"
+          onClose();
+        }
+      } catch (e) {
+        console.error("prompt_save_dialog failed:", e);
+        onClose();
+      }
     }
-  };
 
-  const handleDontSave = () => {
-    usePaintStore.getState().setIsDirty(false);
-    onClose();
-    onProceed?.();
-  };
+    void runPrompt();
 
-  const handleCancel = () => {
-    onClose();
-  };
+    return () => {
+      isCancelled = true;
+    };
+  }, [isOpen, name, onClose, onProceed]);
 
-  return (
-    <DialogFrame title="Paint" onClose={handleCancel}>
-      <div className="w-[380px] p-5 text-sm select-none">
-        <p className="text-ink text-sm mb-6">
-          Do you want to save changes to <span className="font-semibold">{name}</span>?
-        </p>
-        <div className="flex justify-end gap-2">
-          <button
-            type="button"
-            onClick={handleSave}
-            className="rounded bg-[#0078d4] hover:bg-[#106ebe] active:bg-[#005a9e] px-4 py-1.5 font-medium text-white shadow-sm transition-colors text-xs"
-          >
-            Save
-          </button>
-          <button
-            type="button"
-            onClick={handleDontSave}
-            className="rounded bg-surface-muted border border-edge px-3.5 py-1.5 font-medium text-ink hover:bg-surface-hover active:bg-surface transition-colors text-xs"
-          >
-            Don't Save
-          </button>
-          <button
-            type="button"
-            onClick={handleCancel}
-            className="rounded bg-surface-muted border border-edge px-3.5 py-1.5 font-medium text-ink hover:bg-surface-hover active:bg-surface transition-colors text-xs"
-          >
-            Cancel
-          </button>
-        </div>
-      </div>
-    </DialogFrame>
-  );
+  // Pure native AppKit modal, no DOM overlay rendered.
+  return null;
 }

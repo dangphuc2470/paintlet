@@ -35,7 +35,7 @@ export async function installAppMenu(): Promise<void> {
       await PredefinedMenuItem.new({ item: "Separator" }),
       await PredefinedMenuItem.new({ item: "Services" }),
       await PredefinedMenuItem.new({ item: "Separator" }),
-      await PredefinedMenuItem.new({ item: "Quit", text: "Quit Paint" }),
+      await item("Quit Paint", "CmdOrCtrl+Q", A.quitApp),
     ],
   });
 
@@ -48,7 +48,7 @@ export async function installAppMenu(): Promise<void> {
       await item("Save", "CmdOrCtrl+S", A.saveFile),
       await item("Save As…", "CmdOrCtrl+Shift+S", A.saveFileAs),
       await sep(),
-      await PredefinedMenuItem.new({ item: "CloseWindow", text: "Close Window" }),
+      await item("Close Window", "CmdOrCtrl+W", A.closeWindow),
     ],
   });
 

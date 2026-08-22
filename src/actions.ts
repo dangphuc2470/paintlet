@@ -27,25 +27,29 @@ function editableFocused(): boolean {
 // — File —
 // Every entry point that exports or replaces the document commits a pending
 // text edit first — typed-but-unplaced text must never be silently dropped.
-
 // Every command that replaces the current document (New, Open, a Finder open)
 // asks through this — one prompt, one wording, everywhere.
-async function confirmDiscard(title: string): Promise<boolean> {
-  if (!usePaintStore.getState().isDirty) return true;
-  return ask("Discard the current drawing?", { title, kind: "warning" });
+function confirmDiscard(onProceed: () => void): void {
+  if (!usePaintStore.getState().isDirty) {
+    onProceed();
+    return;
+  }
+  usePaintStore.getState().openSavePrompt(onProceed);
 }
 
-export async function newDocument(): Promise<void> {
+export function newDocument(): void {
   stageHooks.flushTextEdit?.();
-  if (!(await confirmDiscard("New Image"))) return;
-  engine.newDocument(DEFAULT_CANVAS_SIZE.w, DEFAULT_CANVAS_SIZE.h);
-  usePaintStore.getState().setFilePath(null);
+  confirmDiscard(() => {
+    engine.newDocument(DEFAULT_CANVAS_SIZE.w, DEFAULT_CANVAS_SIZE.h);
+    usePaintStore.getState().setFilePath(null);
+  });
 }
 
-export async function openFile(): Promise<void> {
+export function openFile(): void {
   stageHooks.flushTextEdit?.();
-  if (!(await confirmDiscard("Open Image"))) return;
-  void openImage();
+  confirmDiscard(() => {
+    void openImage();
+  });
 }
 
 // A document macOS handed us: Finder double-click or Open With, arriving as a
@@ -56,13 +60,14 @@ export async function openFile(): Promise<void> {
 // request is ignored — the same behavior as the dialog's multiple: false, and
 // one document per request is all a window with no tabs can show. A file that
 // fails to load leaves the document untouched, as it does from File → Open.
-export async function openFromSystem(paths: string[]): Promise<void> {
+export function openFromSystem(paths: string[]): void {
   const path = firstOpenablePath(paths);
   if (!path) return;
 
   stageHooks.flushTextEdit?.();
-  if (!(await confirmDiscard("Open Image"))) return;
-  await loadImageFromPath(path);
+  confirmDiscard(() => {
+    void loadImageFromPath(path);
+  });
 }
 export function saveFile(): void {
   stageHooks.flushTextEdit?.();

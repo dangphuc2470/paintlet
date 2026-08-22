@@ -14,6 +14,7 @@ import { CanvasStage } from "./components/CanvasStage";
 import { StatusBar } from "./components/StatusBar";
 import { ResizeDialog } from "./components/dialogs/ResizeDialog";
 import { SettingsDialog } from "./components/dialogs/SettingsDialog";
+import { SavePromptDialog } from "./components/dialogs/SavePromptDialog";
 import { applyTheme } from "./lib/theme";
 
 // Single-key tool shortcuts (no modifier), exactly the set Windows Paint binds
@@ -49,6 +50,9 @@ const NUDGE: Record<string, [number, number]> = {
 function App() {
   const theme = usePaintStore((s) => s.theme);
   const setTool = usePaintStore((s) => s.setTool);
+  const savePrompt = usePaintStore((s) => s.savePrompt);
+  const closeSavePrompt = usePaintStore((s) => s.closeSavePrompt);
+  const openSavePrompt = usePaintStore((s) => s.openSavePrompt);
 
   // Build the native macOS menu bar once. Its items call straight into the
   // action layer (File/Edit/Image/View + ⌘-accelerators).
@@ -59,27 +63,23 @@ function App() {
   }, []);
 
   // Guard the window close button: if the document has unsaved changes, ask
-  // before letting it close. Tauri's onCloseRequested runs our handler and then
-  // destroys the window unless we preventDefault, so a clean document (or a
-  // confirmed discard) closes normally and a cancel keeps the window open.
+  // with 3-button save prompt (Save / Don't Save / Cancel) before letting it close.
   useEffect(() => {
     let unlisten: (() => void) | undefined;
     getCurrentWindow()
       .onCloseRequested(async (event) => {
-        // A pending text edit counts as unsaved work: commit it so the dirty
-        // check below sees it (and so a canceled close doesn't lose it).
         stageHooks.flushTextEdit?.();
-        if (!usePaintStore.getState().isDirty) return; // clean → just close
-        const discard = await ask("You have unsaved changes. Close without saving?", {
-          title: "Paintlet",
-          kind: "warning",
-        });
-        if (!discard) event.preventDefault();
+        if (usePaintStore.getState().isDirty) {
+          event.preventDefault();
+          openSavePrompt(() => {
+            getCurrentWindow().destroy();
+          });
+        }
       })
       .then((u) => (unlisten = u))
       .catch((err) => console.error("Failed to install close guard:", err));
     return () => unlisten?.();
-  }, []);
+  }, [openSavePrompt]);
 
   // Files macOS hands us (Finder double-click, Open With). The listener is
   // installed before the webview_ready handshake, so any opens Rust buffered
@@ -188,6 +188,11 @@ function App() {
       <StatusBar />
       <ResizeDialog />
       <SettingsDialog />
+      <SavePromptDialog
+        isOpen={savePrompt.isOpen}
+        onClose={closeSavePrompt}
+        onProceed={savePrompt.onProceed}
+      />
     </div>
   );
 }

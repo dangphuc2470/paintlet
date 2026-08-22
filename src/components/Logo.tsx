@@ -6,12 +6,13 @@
 export function Logo({ size = 18 }: { size?: number }) {
   return (
     <img
-      src="/logo.png"
+      src="/logo.svg"
       width={size}
       height={size}
       alt=""
       aria-hidden="true"
       draggable={false}
+      className="shrink-0 object-contain"
     />
   );
 }

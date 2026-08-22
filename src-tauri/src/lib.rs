@@ -71,7 +71,7 @@ fn open_about_window(app: tauri::AppHandle) -> Result<(), String> {
     }
 
     tauri::WebviewWindowBuilder::new(&app, "about", tauri::WebviewUrl::App("about.html".into()))
-        .title("About Paintlet")
+        .title("About Paint")
         .inner_size(340.0, 300.0)
         .resizable(false)
         .maximizable(false)
@@ -265,6 +265,13 @@ pub fn run() {
             open_about_window,
             webview_ready
         ])
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::Destroyed = event {
+                if window.label() == "main" {
+                    window.app_handle().exit(0);
+                }
+            }
+        })
         // The run callback (rather than Builder::run) is what makes Finder
         // opens reachable: RunEvent::Opened only surfaces here.
         .build(tauri::generate_context!())

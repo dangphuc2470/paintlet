@@ -16,12 +16,11 @@ export function TitleBar() {
   return (
     <div
       data-tauri-drag-region
-      className="flex h-7 shrink-0 items-center justify-center gap-1.5 bg-surface text-xs text-ink-muted"
+      className="flex h-7 shrink-0 items-center justify-center gap-1.5 bg-surface text-xs text-ink-muted select-none"
     >
       <Logo size={15} />
       <span data-tauri-drag-region>
-        {isDirty ? "• " : ""}
-        {name} - Paintlet
+        {isDirty ? "• " : ""}{name} - Paint
       </span>
     </div>
   );

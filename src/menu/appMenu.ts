@@ -27,13 +27,15 @@ export async function installAppMenu(): Promise<void> {
   // Deliberately minimal: About + Quit. The default Hide / Hide Others / Show
   // All items are dropped — they're clutter for a single-window paint app.
   const appMenu = await Submenu.new({
-    text: "Paintlet",
+    text: "Paint",
     items: [
-      await item("About Paintlet", undefined, A.openAboutWindow),
-      await sep(),
+      await item("About Paint", undefined, A.openAboutWindow),
+      await PredefinedMenuItem.new({ item: "Separator" }),
       await item("Settings…", "CmdOrCtrl+,", A.openSettingsDialog),
-      await sep(),
-      await PredefinedMenuItem.new({ item: "Quit", text: "Quit Paintlet" }),
+      await PredefinedMenuItem.new({ item: "Separator" }),
+      await PredefinedMenuItem.new({ item: "Services" }),
+      await PredefinedMenuItem.new({ item: "Separator" }),
+      await PredefinedMenuItem.new({ item: "Quit", text: "Quit Paint" }),
     ],
   });
 

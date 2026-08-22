@@ -41,6 +41,7 @@ interface PaintState {
   theme: Theme;
   resizeDialogOpen: boolean;
   settingsDialogOpen: boolean;
+  savePrompt: { isOpen: boolean; onProceed?: () => void };
 
   // — mirrored from the engine (menu/button enablement, title dot) —
   isDirty: boolean;
@@ -61,8 +62,11 @@ interface PaintState {
   setCursorPos: (p: Point | null) => void;
   setTheme: (t: Theme) => void;
   setFilePath: (p: string | null) => void;
+  setIsDirty: (d: boolean) => void;
   setResizeDialogOpen: (open: boolean) => void;
   setSettingsDialogOpen: (open: boolean) => void;
+  openSavePrompt: (onProceed?: () => void) => void;
+  closeSavePrompt: () => void;
   setEngineState: (s: {
     canUndo: boolean;
     canRedo: boolean;
@@ -96,6 +100,7 @@ export const usePaintStore = create<PaintState>((set) => ({
   theme: initialSettings.theme,
   resizeDialogOpen: false,
   settingsDialogOpen: false,
+  savePrompt: { isOpen: false },
 
   isDirty: false,
   canUndo: false,
@@ -130,8 +135,11 @@ export const usePaintStore = create<PaintState>((set) => ({
     set({ theme: t });
   },
   setFilePath: (p) => set({ filePath: p }),
+  setIsDirty: (d) => set({ isDirty: d }),
   setResizeDialogOpen: (open) => set({ resizeDialogOpen: open }),
   setSettingsDialogOpen: (open) => set({ settingsDialogOpen: open }),
+  openSavePrompt: (onProceed) => set({ savePrompt: { isOpen: true, onProceed } }),
+  closeSavePrompt: () => set({ savePrompt: { isOpen: false, onProceed: undefined } }),
   setEngineState: (s) =>
     set({
       canUndo: s.canUndo,

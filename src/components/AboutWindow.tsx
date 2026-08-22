@@ -34,7 +34,7 @@ export function AboutWindow() {
   return (
     <div className="flex h-full flex-col items-center justify-center bg-surface px-6 py-5 text-center text-ink select-none">
       <Logo size={64} />
-      <h1 className="mt-3 text-base font-semibold">Paintlet</h1>
+      <h1 className="mt-3 text-base font-semibold">Paint</h1>
       {version && <p className="mt-0.5 text-xs text-ink-muted">Version {version}</p>}
       <p className="mt-2 text-xs text-ink-muted">
         An MS Paint-style image editor for macOS.

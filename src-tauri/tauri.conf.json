@@ -5,7 +5,7 @@
   "identifier": "com.microsoft.paint",
   "build": {
     "beforeDevCommand": "pnpm dev:web",
-    "devUrl": "http://localhost:1420",
+    "devUrl": "http://localhost:1425",
     "beforeBuildCommand": "pnpm build",
     "frontendDist": "../dist"
   },
@@ -44,6 +44,15 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
+    ],
+    "fileAssociations": [
+      {
+        "ext": ["png", "jpg", "jpeg", "bmp", "gif", "webp", "heic", "tiff", "ico", "svg"],
+        "name": "Image File",
+        "description": "Image File",
+        "role": "Editor",
+        "mimeType": "image/*"
+      }
     ],
     "macOS": {
       "minimumSystemVersion": "10.15"

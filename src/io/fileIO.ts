@@ -20,21 +20,27 @@ import {
 // The bytes go through our Rust command (returns an ArrayBuffer) so the user
 // can open from anywhere without fs-scope restrictions.
 export async function loadImageFromPath(path: string): Promise<void> {
-  const bytes = new Uint8Array(
-    await invoke<ArrayBuffer>("read_image_file", { path }),
-  );
-  // ImageIO decodes a truncated AVIF or HEIC as a correctly sized, fully
-  // transparent bitmap instead of failing, which would silently replace the
-  // drawing. Throwing here leaves the document untouched.
-  if (ISO_BMFF_EXTS.includes(extOf(path)) && !isCompleteIsoBmff(bytes)) {
-    throw new Error(`Incomplete image file: ${path}`);
-  }
-  const bitmap = await createImageBitmap(new Blob([bytes]));
-  engine.loadBitmap(bitmap);
-  bitmap.close();
+  try {
+    const bytes = new Uint8Array(
+      await invoke<ArrayBuffer>("read_image_file", { path }),
+    );
+    // ImageIO decodes a truncated AVIF or HEIC as a correctly sized, fully
+    // transparent bitmap instead of failing, which would silently replace the
+    // drawing. Throwing here leaves the document untouched.
+    if (ISO_BMFF_EXTS.includes(extOf(path)) && !isCompleteIsoBmff(bytes)) {
+      throw new Error(`Incomplete image file: ${path}`);
+    }
+    const bitmap = await createImageBitmap(new Blob([bytes]));
+    engine.loadBitmap(bitmap);
+    bitmap.close();
 
-  usePaintStore.getState().setFilePath(path);
+    usePaintStore.getState().setFilePath(path);
+  } catch (err) {
+    console.error("Failed to open image file from path:", err);
+  }
 }
+
+export const openFilePath = loadImageFromPath;
 
 // File → Open: ask for a path, then load it.
 export async function openImage(): Promise<void> {
@@ -44,7 +50,6 @@ export async function openImage(): Promise<void> {
     filters: [{ name: "Images", extensions: OPEN_EXTS }],
   });
   if (typeof selected !== "string") return;
-
   await loadImageFromPath(selected);
 }
 

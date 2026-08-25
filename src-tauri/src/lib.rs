@@ -298,12 +298,85 @@ fn strip_edit_menu_system_items(app: tauri::AppHandle) {
     let _ = app;
 }
 
+static PENDING_OPEN_FILES: std::sync::Mutex<Option<Vec<String>>> = std::sync::Mutex::new(None);
+static PENDING_WINDOW_FILES: std::sync::Mutex<Option<std::collections::HashMap<String, String>>> =
+    std::sync::Mutex::new(None);
+
+#[tauri::command]
+fn get_window_file(window: tauri::WebviewWindow) -> Option<String> {
+    let label = window.label();
+    if let Ok(mut map_lock) = PENDING_WINDOW_FILES.lock() {
+        if let Some(ref mut map) = *map_lock {
+            if let Some(path) = map.remove(label) {
+                return Some(path);
+            }
+        }
+    }
+    // Check initial CLI args if it's the main window
+    if label == "main" {
+        if let Ok(mut pending_lock) = PENDING_OPEN_FILES.lock() {
+            if let Some(ref mut pending) = *pending_lock {
+                if let Some(file) = pending.pop() {
+                    return Some(file);
+                }
+            }
+        }
+        let args: Vec<String> = std::env::args().collect();
+        if args.len() > 1 {
+            for arg in &args[1..] {
+                if !arg.starts_with('-') && std::path::Path::new(arg).exists() {
+                    return Some(arg.clone());
+                }
+            }
+        }
+    }
+    None
+}
+
+#[tauri::command]
+fn open_new_window(app: tauri::AppHandle, file_path: Option<String>) -> Result<(), String> {
+    let win_id = format!(
+        "paint-{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis()
+    );
+    if let Some(ref path) = file_path {
+        if let Ok(mut map_lock) = PENDING_WINDOW_FILES.lock() {
+            if map_lock.is_none() {
+                *map_lock = Some(std::collections::HashMap::new());
+            }
+            if let Some(ref mut map) = *map_lock {
+                map.insert(win_id.clone(), path.clone());
+            }
+        }
+    }
+
+    let mut builder =
+        tauri::WebviewWindowBuilder::new(&app, &win_id, tauri::WebviewUrl::App("index.html".into()))
+            .title("Paint")
+            .inner_size(1100.0, 780.0)
+            .min_inner_size(900.0, 600.0)
+            .center();
+
+    #[cfg(target_os = "macos")]
+    {
+        builder = builder
+            .title_bar_style(tauri::TitleBarStyle::Overlay)
+            .hidden_title(true);
+    }
+
+    builder.build().map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     #[cfg(target_os = "macos")]
     disable_edit_menu_auto_items();
 
-    tauri::Builder::default()
+    let app = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
@@ -316,42 +389,59 @@ pub fn run() {
             prompt_save_dialog,
             strip_edit_menu_system_items,
             open_about_window,
-            webview_ready
+            webview_ready,
+            get_window_file,
+            open_new_window
         ])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::Destroyed = event {
-                if window.label() == "main" {
-                    window.app_handle().exit(0);
+                use tauri::Manager;
+                let app = window.app_handle();
+                let doc_windows: Vec<_> = app
+                    .webview_windows()
+                    .into_iter()
+                    .filter(|(label, _)| label != "about")
+                    .collect();
+                if doc_windows.is_empty() {
+                    app.exit(0);
                 }
             }
         })
-        // The run callback (rather than Builder::run) is what makes Finder
-        // opens reachable: RunEvent::Opened only surfaces here.
         .build(tauri::generate_context!())
-        .expect("error while building tauri application")
-        .run(|app, event| {
-            #[cfg(target_os = "macos")]
-            if let RunEvent::Opened { urls } = event {
-                // LaunchServices hands over file URLs; anything else (there
-                // shouldn't be any) can't be read off disk, so drop it.
-                let paths: Vec<String> = urls
-                    .iter()
-                    .filter_map(|url| url.to_file_path().ok())
-                    .map(|path| path.to_string_lossy().into_owned())
-                    .collect();
-                if paths.is_empty() {
-                    return;
-                }
-                let flush = app
-                    .state::<Mutex<OpenQueue>>()
-                    .lock()
-                    .unwrap()
-                    .enqueue(paths);
-                if let Some(paths) = flush {
-                    let _ = app.emit("document-open", paths);
+        .expect("error while building tauri application");
+
+    app.run(|app_handle, event| {
+        #[cfg(target_os = "macos")]
+        if let tauri::RunEvent::Opened { urls } = event {
+            for url in urls {
+                if let Ok(file_path) = url.to_file_path() {
+                    if let Some(path_str) = file_path.to_str() {
+                        let path_string = path_str.to_string();
+
+                        use tauri::Manager;
+                        let doc_windows: Vec<_> = app_handle
+                            .webview_windows()
+                            .into_iter()
+                            .filter(|(label, _)| label != "about")
+                            .collect();
+
+                        if doc_windows.is_empty() {
+                            if let Ok(mut pending_lock) = PENDING_OPEN_FILES.lock() {
+                                if pending_lock.is_none() {
+                                    *pending_lock = Some(Vec::new());
+                                }
+                                if let Some(ref mut pending) = *pending_lock {
+                                    pending.push(path_string.clone());
+                                }
+                            }
+                        } else {
+                            let _ = open_new_window(app_handle.clone(), Some(path_string.clone()));
+                        }
+                    }
                 }
             }
-        });
+        }
+    });
 }
 
 #[cfg(test)]

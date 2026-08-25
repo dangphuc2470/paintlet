@@ -38,10 +38,15 @@ function confirmDiscard(onProceed: () => void): void {
 
 export function newDocument(): void {
   stageHooks.flushTextEdit?.();
-  confirmDiscard(() => {
+  const store = usePaintStore.getState();
+  const isDirty = store.isDirty || engine.isDirty;
+  const hasFile = !!store.filePath;
+  if (!isDirty && !hasFile) {
     engine.newDocument(DEFAULT_CANVAS_SIZE.w, DEFAULT_CANVAS_SIZE.h);
     usePaintStore.getState().setFilePath(null);
-  });
+    return;
+  }
+  invoke("open_new_window", { filePath: null }).catch(console.error);
 }
 
 export function openFile(): void {

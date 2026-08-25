@@ -56,6 +56,8 @@ export class LassoTool implements Tool {
     if (this.mode === "new") {
       ctx.engine.finalizeLasso(this.points);
       this.points = [];
+    } else if (this.mode === "move") {
+      ctx.engine.emit();
     }
     this.mode = "idle";
   }

@@ -37,6 +37,7 @@ export function CanvasStage() {
   const baseRef = useRef<HTMLCanvasElement>(null);
   const overlayRef = useRef<HTMLCanvasElement>(null);
   const selectionRef = useRef<HTMLCanvasElement>(null);
+  const selectionMarqueeRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const drawing = useRef(false);
@@ -271,14 +272,20 @@ export function CanvasStage() {
       return;
     }
     let raf = 0;
+    let lastTime = performance.now();
     let offset = 0;
-    const loop = () => {
-      offset = (offset + 0.5) % 8;
-      const s = usePaintStore.getState();
-      // Resize grips only for the rectangular select tool (the lasso just
-      // moves; switch to Select to resize a free-form selection).
-      const showHandles = s.activeToolId === "select";
-      engine.renderSelection(offset, s.view.zoom, showHandles);
+    const loop = (time: number) => {
+      const dt = Math.min(50, time - lastTime);
+      lastTime = time;
+      offset = (offset + dt * 0.008) % 8;
+      engine.renderSelection(offset);
+      if (selectionMarqueeRef.current && engine.selection) {
+        const s = engine.selection;
+        const curZoom = usePaintStore.getState().view.zoom;
+        selectionMarqueeRef.current.style.transform = `translate3d(${s.x * curZoom}px, ${s.y * curZoom}px, 0)`;
+        selectionMarqueeRef.current.style.width = `${Math.max(1, s.w * curZoom)}px`;
+        selectionMarqueeRef.current.style.height = `${Math.max(1, s.h * curZoom)}px`;
+      }
       raf = requestAnimationFrame(loop);
     };
     raf = requestAnimationFrame(loop);
@@ -330,7 +337,17 @@ export function CanvasStage() {
     };
 
     const onWheel = (e: WheelEvent) => {
-      if (!e.ctrlKey && !e.metaKey) return; // plain scroll keeps scrolling
+      lastPointer.current = {
+        clientX: e.clientX,
+        clientY: e.clientY,
+        shiftKey: e.shiftKey,
+        buttons: e.buttons,
+        button: e.button,
+      };
+      if (!e.ctrlKey && !e.metaKey) {
+        updatePreviewPos(e.clientX, e.clientY);
+        return; // plain scroll keeps scrolling
+      }
       e.preventDefault();
       // Normalize the delta: mouse wheels report deltaMode 1 (lines) or big
       // pixel steps (~100/notch); a trackpad pinch reports small pixel deltas.
@@ -354,17 +371,45 @@ export function CanvasStage() {
     const onGestureChange = (e: Event) => {
       e.preventDefault();
       const g = e as Event & { scale: number; clientX: number; clientY: number };
+      lastPointer.current = {
+        clientX: g.clientX,
+        clientY: g.clientY,
+        shiftKey: false,
+        buttons: 0,
+        button: 0,
+      };
       zoomAt(g.clientX, g.clientY, gestureStartZoom * g.scale);
     };
     const onGestureEnd = (e: Event) => e.preventDefault();
 
+    const onScroll = () => {
+      if (lastPointer.current) {
+        updatePreviewPos(lastPointer.current.clientX, lastPointer.current.clientY);
+        processMove();
+      }
+    };
+
+    const onGlobalPointerMove = (e: PointerEvent) => {
+      lastPointer.current = {
+        clientX: e.clientX,
+        clientY: e.clientY,
+        shiftKey: e.shiftKey,
+        buttons: e.buttons,
+        button: e.button,
+      };
+    };
+
+    window.addEventListener("pointermove", onGlobalPointerMove, { passive: true });
     el.addEventListener("wheel", onWheel, { passive: false });
+    el.addEventListener("scroll", onScroll, { passive: true });
     el.addEventListener("gesturestart", onGestureStart);
     el.addEventListener("gesturechange", onGestureChange);
     el.addEventListener("gestureend", onGestureEnd);
     return () => {
       viewport.el = null;
+      window.removeEventListener("pointermove", onGlobalPointerMove);
       el.removeEventListener("wheel", onWheel);
+      el.removeEventListener("scroll", onScroll);
       el.removeEventListener("gesturestart", onGestureStart);
       el.removeEventListener("gesturechange", onGestureChange);
       el.removeEventListener("gestureend", onGestureEnd);
@@ -375,14 +420,20 @@ export function CanvasStage() {
   // under the pointer. Layout effect: must run before the frame paints.
   useLayoutEffect(() => {
     const a = zoomAnchor.current;
-    if (!a) return;
-    zoomAnchor.current = null;
-    const el = containerRef.current;
-    const overlay = overlayRef.current;
-    if (!el || !overlay) return;
-    const rect = overlay.getBoundingClientRect();
-    el.scrollLeft += rect.left + a.ix * zoom - a.clientX;
-    el.scrollTop += rect.top + a.iy * zoom - a.clientY;
+    if (a) {
+      zoomAnchor.current = null;
+      const el = containerRef.current;
+      const overlay = overlayRef.current;
+      if (el && overlay) {
+        const rect = overlay.getBoundingClientRect();
+        el.scrollLeft += rect.left + a.ix * zoom - a.clientX;
+        el.scrollTop += rect.top + a.iy * zoom - a.clientY;
+      }
+    }
+    if (lastPointer.current) {
+      updatePreviewPos(lastPointer.current.clientX, lastPointer.current.clientY);
+      processMove();
+    }
   }, [zoom]);
 
   // Track the spacebar for space-drag panning (ignored while typing in a
@@ -800,9 +851,9 @@ export function CanvasStage() {
       onPointerUpCapture={onPanPointerEnd}
       onPointerCancelCapture={onPanPointerEnd}
     >
-      <div className="flex min-h-full min-w-full items-center justify-center p-10">
+      <div className="flex min-h-full min-w-full w-fit h-fit p-10">
         {/* The "paper": drop shadow + hairline ring around the document. */}
-        <div className="relative shadow-lg ring-1 ring-black/10" style={cssSize}>
+        <div className="relative m-auto shadow-2xl ring-1 ring-black/20 bg-white shrink-0" style={cssSize}>
           <canvas
             ref={baseRef}
             className="absolute left-0 top-0 bg-white"
@@ -860,7 +911,7 @@ export function CanvasStage() {
               }}
             />
           )}
-          {/* Selection layer: marquee + floating content. Pointer-transparent so
+          {/* Selection layer: floating content (pixels). Pointer-transparent so
               the overlay below keeps receiving pointer events. */}
           <canvas
             ref={selectionRef}
@@ -868,26 +919,86 @@ export function CanvasStage() {
             style={{ ...cssSize, imageRendering: "pixelated" }}
           />
 
+          {/* Selection Marquee & 8 resize handles overlay: vector crisp, 1px lines, fixed 7px handles */}
+          {hasSelection && engine.selection && !engine.hasLassoOutline() && (
+            <div
+              ref={selectionMarqueeRef}
+              className="pointer-events-none absolute left-0 top-0 z-20 will-change-transform"
+              style={{
+                transform: `translate3d(${engine.selection.x * zoom}px, ${engine.selection.y * zoom}px, 0)`,
+                width: Math.max(1, engine.selection.w * zoom),
+                height: Math.max(1, engine.selection.h * zoom),
+              }}
+            >
+              <svg className="w-full h-full overflow-visible pointer-events-none absolute inset-0">
+                <rect
+                  x="0.5"
+                  y="0.5"
+                  width="100%"
+                  height="100%"
+                  fill="none"
+                  stroke="#ffffff"
+                  strokeWidth="1"
+                  className="marching-ants-white"
+                />
+                <rect
+                  x="0.5"
+                  y="0.5"
+                  width="100%"
+                  height="100%"
+                  fill="none"
+                  stroke="#000000"
+                  strokeWidth="1"
+                  className="marching-ants-black"
+                />
+              </svg>
+
+              {/* 8 selection resize grips (Rectangular select tool) */}
+              {activeToolId === "select" && (
+                <>
+                  {(
+                    [
+                      ["nw", { left: -3.5, top: -3.5 }],
+                      ["n", { top: -3.5, left: "50%", transform: "translateX(-50%)" }],
+                      ["ne", { right: -3.5, top: -3.5 }],
+                      ["e", { right: -3.5, top: "50%", transform: "translateY(-50%)" }],
+                      ["se", { right: -3.5, bottom: -3.5 }],
+                      ["s", { bottom: -3.5, left: "50%", transform: "translateX(-50%)" }],
+                      ["sw", { left: -3.5, bottom: -3.5 }],
+                      ["w", { left: -3.5, top: "50%", transform: "translateY(-50%)" }],
+                    ] as const
+                  ).map(([id, pos]) => (
+                    <div
+                      key={id}
+                      className="absolute z-20 h-[7px] w-[7px] border border-black bg-white shadow-xs"
+                      style={pos}
+                    />
+                  ))}
+                </>
+              )}
+            </div>
+          )}
+
           {/* Canvas resize handles on every corner and edge midpoint: drag to
               crop or extend the canvas. Each grip's compass id drives both its
               cursor and which edge(s) it moves. */}
           {(
             [
-              ["nw", { left: -6, top: -6 }],
-              ["n", { top: -6, left: "50%", marginLeft: -5 }],
-              ["ne", { right: -6, top: -6 }],
-              ["e", { right: -6, top: "50%", marginTop: -5 }],
-              ["se", { right: -6, bottom: -6 }],
-              ["s", { bottom: -6, left: "50%", marginLeft: -5 }],
-              ["sw", { left: -6, bottom: -6 }],
-              ["w", { left: -6, top: "50%", marginTop: -5 }],
+              ["nw", { left: -5, top: -5 }],
+              ["n", { top: -5, left: "50%", transform: "translateX(-50%)" }],
+              ["ne", { right: -5, top: -5 }],
+              ["e", { right: -5, top: "50%", transform: "translateY(-50%)" }],
+              ["se", { right: -5, bottom: -5 }],
+              ["s", { bottom: -5, left: "50%", transform: "translateX(-50%)" }],
+              ["sw", { left: -5, bottom: -5 }],
+              ["w", { left: -5, top: "50%", transform: "translateY(-50%)" }],
             ] as const
           ).map(([dir, pos]) => (
             <div
               key={dir}
               data-dir={dir}
               title="Drag to resize the canvas"
-              className="absolute z-10 h-2.5 w-2.5 rounded-[2px] border border-neutral-400 bg-white shadow-sm"
+              className="absolute z-30 h-2.5 w-2.5 rounded-[1px] border border-neutral-500 bg-white shadow-md"
               style={{ ...pos, cursor: HANDLE_CURSOR[dir] }}
               onPointerDown={onHandleDown(dir)}
               onPointerMove={onHandleMove}

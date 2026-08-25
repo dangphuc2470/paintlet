@@ -1,6 +1,5 @@
 import { History } from "./History";
 import { hexToRgba } from "./color";
-import { selectionHandles } from "./selectionHandles";
 import type { Point, Rect } from "./types";
 
 // Snapshot of engine state that the UI mirrors (menu/button enablement, title
@@ -46,6 +45,10 @@ export class CanvasEngine {
   // finalizing closes it back to the start.
   private selPoly: Point[] | null = null;
   private selPolyClosed = false;
+
+  hasLassoOutline(): boolean {
+    return !!this.selPoly;
+  }
   // Lifted/pasted pixels that hover above the base until committed. Drawn on the
   // selection layer at (floatX, floatY); folded into the base on commit.
   private floatCanvas: HTMLCanvasElement | null = null;
@@ -149,9 +152,9 @@ export class CanvasEngine {
   }
 
 
-  private emit(): void {
+  emit(): void {
     this.onChange?.({
-      canUndo: this.history.canUndo(),
+      canUndo: this.history.canUndo() || this.floatCanvas != null,
       canRedo: this.history.canRedo(),
       isDirty: this.dirty,
       width: this.width,
@@ -252,6 +255,13 @@ export class CanvasEngine {
   }
 
   undo(): void {
+    if (this.floatCanvas) {
+      const snap = this.history.current();
+      if (snap) {
+        this.applySnapshot(snap);
+        return;
+      }
+    }
     const snap = this.history.undo();
     if (snap) this.applySnapshot(snap);
   }
@@ -796,11 +806,8 @@ export class CanvasEngine {
     this.emit();
   }
 
-  // Repaint the selection layer: floating content, then animated marching ants
-  // along the current marquee — the rect, or the lasso outline when one exists —
-  // and (when asked) the eight resize grips. Driven by CanvasStage's rAF loop;
-  // `zoom` keeps the grips a constant on-screen size despite the CSS scale.
-  renderSelection(dashOffset = 0, zoom = 1, showHandles = false): void {
+  // Repaint the selection layer: floating content, plus lasso path when active.
+  renderSelection(dashOffset = 0): void {
     const s = this.sel;
     s.clearRect(0, 0, this.width, this.height);
     const shown = this.floatDisplay ?? this.floatCanvas;
@@ -808,40 +815,18 @@ export class CanvasEngine {
     const r = this.selection;
     if (!r || r.w < 1 || r.h < 1) return;
     const path = this.selPath(false);
-    s.save();
-    s.lineWidth = 1;
-    s.setLineDash([4, 4]);
-    s.strokeStyle = "#ffffff";
-    s.lineDashOffset = -dashOffset;
-    if (path) s.stroke(path);
-    else
-      s.strokeRect(r.x + 0.5, r.y + 0.5, Math.max(0, r.w - 1), Math.max(0, r.h - 1));
-    s.strokeStyle = "#000000";
-    s.lineDashOffset = -dashOffset + 4;
-    if (path) s.stroke(path);
-    else
-      s.strokeRect(r.x + 0.5, r.y + 0.5, Math.max(0, r.w - 1), Math.max(0, r.h - 1));
-    s.restore();
-
-    if (showHandles) this.drawHandles(r, zoom);
-  }
-
-  // Small square grips at the selection's corners and edge midpoints. Sized in
-  // image px as (constant / zoom) so they render at a fixed on-screen size.
-  private drawHandles(r: Rect, zoom: number): void {
-    const s = this.sel;
-    const size = 7 / zoom; // ~7 screen px
-    const half = size / 2;
-    s.save();
-    s.setLineDash([]);
-    s.lineWidth = 1 / zoom;
-    for (const h of selectionHandles(r)) {
-      s.fillStyle = "#ffffff";
+    if (path) {
+      s.save();
+      s.lineWidth = 1;
+      s.setLineDash([4, 4]);
+      s.strokeStyle = "#ffffff";
+      s.lineDashOffset = -dashOffset;
+      s.stroke(path);
       s.strokeStyle = "#000000";
-      s.fillRect(h.x - half, h.y - half, size, size);
-      s.strokeRect(h.x - half, h.y - half, size, size);
+      s.lineDashOffset = -dashOffset + 4;
+      s.stroke(path);
+      s.restore();
     }
-    s.restore();
   }
 
   // Whether a point (image px) is inside the current selection — for the select

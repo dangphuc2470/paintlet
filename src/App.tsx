@@ -7,6 +7,7 @@ import * as A from "./actions";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
+import { openFilePath } from "./io/fileIO";
 import { TitleBar } from "./components/TitleBar";
 import { Toolbar } from "./components/Toolbar";
 import { CanvasStage } from "./components/CanvasStage";
@@ -53,6 +54,17 @@ function App() {
   const savePrompt = usePaintStore((s) => s.savePrompt);
   const closeSavePrompt = usePaintStore((s) => s.closeSavePrompt);
   const openSavePrompt = usePaintStore((s) => s.openSavePrompt);
+
+  // Handle file opened into this window
+  useEffect(() => {
+    invoke<string | null>("get_window_file")
+      .then((path) => {
+        if (path) {
+          openFilePath(path);
+        }
+      })
+      .catch(console.error);
+  }, []);
 
   // Build the native macOS menu bar once. Its items call straight into the
   // action layer (File/Edit/Image/View + ⌘-accelerators).

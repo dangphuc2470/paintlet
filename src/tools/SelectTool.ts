@@ -73,6 +73,8 @@ export class SelectTool implements Tool {
     if (this.mode === "new") {
       const end = p.shiftKey ? constrainSquare(this.start, p.point) : p.point;
       ctx.engine.finalizeMarquee(normalizeRect(this.start, end));
+    } else if (this.mode === "move" || this.mode === "resize") {
+      ctx.engine.emit();
     }
     this.mode = "idle";
   }

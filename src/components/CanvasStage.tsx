@@ -131,6 +131,11 @@ export function CanvasStage() {
   const textStyle = usePaintStore((s) => s.textStyle);
   const hasSelection = usePaintStore((s) => s.hasSelection);
 
+  const canvasResizeAnchor = useRef<{
+    dir: HandleId;
+    oldRect: DOMRect;
+  } | null>(null);
+
   const [textEdit, setTextEdit] = useState<TextEdit | null>(null);
   // Mirror into a ref so the tool-switch effect can read the latest edit
   // without re-subscribing.
@@ -441,25 +446,88 @@ export function CanvasStage() {
     };
   }, []);
 
-  // After a zoom-at-cursor renders, scroll so the anchored image point is back
-  // under the pointer. Layout effect: must run before the frame paints.
+  const prevZoomRef = useRef(zoom);
+
+  // After a zoom or canvas resize renders, scroll so the anchored point/edge
+  // stays put on screen. Layout effect: must run before the frame paints.
   useLayoutEffect(() => {
-    const a = zoomAnchor.current;
-    if (a) {
-      zoomAnchor.current = null;
-      const el = containerRef.current;
-      const overlay = overlayRef.current;
-      if (el && overlay) {
+    const el = containerRef.current;
+    const overlay = overlayRef.current;
+    const curZoom = zoom;
+    const prevZoom = prevZoomRef.current;
+    prevZoomRef.current = curZoom;
+
+    if (el && overlay) {
+      // 1. Canvas edge resize: pin the opposite edge stationary on screen,
+      // and only scroll if the dragged edge goes out of viewport bounds.
+      const cra = canvasResizeAnchor.current;
+      if (cra) {
+        canvasResizeAnchor.current = null;
+        const newRect = overlay.getBoundingClientRect();
+        const { dir, oldRect } = cra;
+
+        // Pin opposite edge:
+        if (!dir.includes("w")) {
+          // Dragged east/right -> keep west/left edge fixed on screen
+          el.scrollLeft += Math.round(newRect.left - oldRect.left);
+        } else {
+          // Dragged west/left -> keep east/right edge fixed on screen
+          el.scrollLeft += Math.round(newRect.right - oldRect.right);
+        }
+
+        if (!dir.includes("n")) {
+          // Dragged south/down -> keep north/top edge fixed on screen
+          el.scrollTop += Math.round(newRect.top - oldRect.top);
+        } else {
+          // Dragged north/up -> keep south/bottom edge fixed on screen
+          el.scrollTop += Math.round(newRect.bottom - oldRect.bottom);
+        }
+
+        // Reveal the dragged edge if it stretched outside the viewport:
+        const updatedRect = overlay.getBoundingClientRect();
+        const margin = 40;
+        if (dir.includes("e") && updatedRect.right > el.clientWidth - margin) {
+          el.scrollLeft += Math.round(updatedRect.right - (el.clientWidth - margin));
+        } else if (dir.includes("w") && updatedRect.left < margin) {
+          el.scrollLeft += Math.round(updatedRect.left - margin);
+        }
+
+        if (dir.includes("s") && updatedRect.bottom > el.clientHeight - margin) {
+          el.scrollTop += Math.round(updatedRect.bottom - (el.clientHeight - margin));
+        } else if (dir.includes("n") && updatedRect.top < margin) {
+          el.scrollTop += Math.round(updatedRect.top - margin);
+        }
+      }
+
+      // 2. Zoom anchor
+      let a = zoomAnchor.current;
+      if (!a && curZoom !== prevZoom) {
+        // Zoom triggered via keyboard (⌘+/⌘-) or bottom slider:
+        // anchor to the center of the viewport so center of screen stays put.
         const rect = overlay.getBoundingClientRect();
-        el.scrollLeft += rect.left + a.ix * zoom - a.clientX;
-        el.scrollTop += rect.top + a.iy * zoom - a.clientY;
+        const clientX = el.clientWidth / 2;
+        const clientY = el.clientHeight / 2;
+        a = {
+          clientX,
+          clientY,
+          ix: (clientX - rect.left) / prevZoom,
+          iy: (clientY - rect.top) / prevZoom,
+        };
+      }
+
+      if (a) {
+        zoomAnchor.current = null;
+        const rect = overlay.getBoundingClientRect();
+        el.scrollLeft += rect.left + a.ix * curZoom - a.clientX;
+        el.scrollTop += rect.top + a.iy * curZoom - a.clientY;
       }
     }
+
     if (lastPointer.current) {
       updatePreviewPos(lastPointer.current.clientX, lastPointer.current.clientY);
       processMove();
     }
-  }, [zoom]);
+  }, [w, h, zoom]);
 
   // Track the spacebar for space-drag panning (ignored while typing in a
   // field). Window blur releases it so a ⌘Tab away can't wedge pan mode on.
@@ -577,11 +645,20 @@ export function CanvasStage() {
     if (!d) return;
     e.stopPropagation();
     const t = resizeTarget(e);
+    const { dir } = d;
     resizeDrag.current = null;
     setResizePreview(null);
     setCanvasResizeCursor(null);
-    if (t.w !== d.startW || t.h !== d.startH || t.x !== 0 || t.y !== 0)
+    if (t.w !== d.startW || t.h !== d.startH || t.x !== 0 || t.y !== 0) {
+      const overlay = overlayRef.current;
+      if (overlay) {
+        canvasResizeAnchor.current = {
+          dir,
+          oldRect: overlay.getBoundingClientRect(),
+        };
+      }
       engine.setCanvasSizeAnchored(t.w, t.h, -t.x, -t.y);
+    }
   };
 
   // Keyboard shortcuts: Esc cancels in-progress actions; Arrow keys nudge selections
@@ -858,6 +935,22 @@ export function CanvasStage() {
         ? "grab"
         : (handleCursor ?? toolCursor);
   const cssSize = { width: w * zoom, height: h * zoom };
+  const isZoomed = zoom > 1;
+
+  const stagePaddingStyle = isZoomed
+    ? {
+        paddingLeft: "max(140px, 45vw)",
+        paddingRight: "max(140px, 45vw)",
+        paddingTop: "max(60px, 35vh)",
+        paddingBottom: "max(60px, 35vh)",
+      }
+    : {
+        paddingLeft: "80px",
+        paddingRight: "80px",
+        paddingTop: "40px",
+        paddingBottom: "40px",
+      };
+
   const box = textEdit ? measureBox(textEdit.value, textStyle) : null;
   const lineHeightPx = Math.round(textStyle.fontSize * LINE_HEIGHT) * zoom;
 
@@ -876,7 +969,10 @@ export function CanvasStage() {
       onPointerUpCapture={onPanPointerEnd}
       onPointerCancelCapture={onPanPointerEnd}
     >
-      <div className="flex min-h-full min-w-full w-fit h-fit p-10">
+      <div
+        className="flex min-h-full min-w-full w-fit h-fit"
+        style={stagePaddingStyle}
+      >
         {/* The "paper": drop shadow + hairline ring around the document. */}
         <div className="relative m-auto shadow-2xl ring-1 ring-black/20 bg-white shrink-0" style={cssSize}>
           <canvas

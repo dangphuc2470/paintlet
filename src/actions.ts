@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { DEFAULT_CANVAS_SIZE, engine, usePaintStore } from "./state/store";
 import { stageHooks } from "./state/stageHooks";
-import { STAGE_PADDING, viewport } from "./state/viewport";
+import { STAGE_PADDING_X, STAGE_PADDING_Y, viewport } from "./state/viewport";
 import { loadImageFromPath, openImage, saveImage } from "./io/fileIO";
 import { firstOpenablePath } from "./io/formats";
 import { copySelection, cutSelection, pasteClipboard } from "./io/clipboard";
@@ -223,8 +223,8 @@ export function fitToWindow(): void {
   const el = viewport.el;
   const s = usePaintStore.getState();
   if (!el) return;
-  const availW = el.clientWidth - STAGE_PADDING * 2;
-  const availH = el.clientHeight - STAGE_PADDING * 2;
+  const availW = el.clientWidth - STAGE_PADDING_X * 2;
+  const availH = el.clientHeight - STAGE_PADDING_Y * 2;
   if (availW <= 0 || availH <= 0) return;
   const fit = Math.min(availW / s.imageSize.w, availH / s.imageSize.h);
   // Round down to a hundredth so the fitted image never overshoots into

@@ -371,6 +371,135 @@ fn open_new_window(app: tauri::AppHandle, file_path: Option<String>) -> Result<(
     Ok(())
 }
 
+fn is_editor_window(label: &str) -> bool {
+    label == "main" || label.starts_with("paint-")
+}
+
+// The editor the user is actually typing in. Menu accelerators are app-global,
+// and Tauri's is_focused() can be true for the wrong window while the menu
+// handles the key, so on macOS match AppKit's key window instead.
+fn focused_editor(app: &tauri::AppHandle) -> Option<tauri::WebviewWindow> {
+    #[cfg(target_os = "macos")]
+    {
+        use objc2::MainThreadMarker;
+        use objc2_app_kit::NSApplication;
+
+        if let Some(mtm) = MainThreadMarker::new() {
+            if let Some(key) = NSApplication::sharedApplication(mtm).keyWindow() {
+                let key_ptr = objc2::rc::Retained::as_ptr(&key) as isize;
+                if let Some(win) = app.webview_windows().into_values().find(|win| {
+                    is_editor_window(win.label())
+                        && win
+                            .ns_window()
+                            .map(|ptr| ptr as isize == key_ptr)
+                            .unwrap_or(false)
+                }) {
+                    return Some(win);
+                }
+            }
+        }
+    }
+
+    app.webview_windows().into_values().find(|win| {
+        is_editor_window(win.label()) && win.is_focused().unwrap_or(false)
+    })
+}
+
+// The menu bar is one per app on macOS. Building it in Rust (not in each
+// webview) keeps the item callbacks alive after the first window closes, and
+// the click is forwarded only to the editor that currently has focus.
+fn build_app_menu(app: &tauri::AppHandle) -> tauri::Result<tauri::menu::Menu<tauri::Wry>> {
+    use tauri::menu::{MenuBuilder, MenuItem, PredefinedMenuItem, SubmenuBuilder};
+
+    let item = |id, text, accel: Option<&str>| MenuItem::with_id(app, id, text, true, accel);
+
+    let about = item("about", "About Paint", None)?;
+    // No key equivalents. On macOS an accelerator is app-global and steals the
+    // key before the focused webview sees it, so the shortcut runs in the wrong
+    // window (or in none). Each editor handles ⌘-keys itself.
+    let settings = item("settings", "Settings…", None)?;
+    let quit = item("quit", "Quit Paint", None)?;
+    let services = PredefinedMenuItem::services(app, None)?;
+
+    let new_doc = item("new", "New", None)?;
+    let open = item("open", "Open…", None)?;
+    let save = item("save", "Save", None)?;
+    let save_as = item("save-as", "Save As…", None)?;
+    let close = item("close", "Close Window", None)?;
+
+    let undo = item("undo", "Undo", None)?;
+    let redo = item("redo", "Redo", None)?;
+    let cut = item("cut", "Cut", None)?;
+    let copy = item("copy", "Copy", None)?;
+    let paste = item("paste", "Paste", None)?;
+    let delete = item("delete", "Delete", None)?;
+    let select_all = item("select-all", "Select All", None)?;
+    let resize = item("resize", "Resize…", None)?;
+    let crop = item("crop", "Crop to Selection", None)?;
+    let flip_h = item("flip-h", "Flip Horizontal", None)?;
+    let flip_v = item("flip-v", "Flip Vertical", None)?;
+    let rot_r = item("rotate-right", "Rotate 90° Right", None)?;
+    let rot_l = item("rotate-left", "Rotate 90° Left", None)?;
+    let rot_180 = item("rotate-180", "Rotate 180°", None)?;
+
+    let zoom_in = item("zoom-in", "Zoom In", None)?;
+    let zoom_out = item("zoom-out", "Zoom Out", None)?;
+    let actual = item("actual-size", "Actual Size", None)?;
+    let fit = item("fit", "Fit to Window", None)?;
+
+    let app_menu = SubmenuBuilder::new(app, "Paint")
+        .item(&about)
+        .separator()
+        .item(&settings)
+        .separator()
+        .item(&services)
+        .separator()
+        .item(&quit)
+        .build()?;
+    let file_menu = SubmenuBuilder::new(app, "File")
+        .item(&new_doc)
+        .item(&open)
+        .separator()
+        .item(&save)
+        .item(&save_as)
+        .separator()
+        .item(&close)
+        .build()?;
+    let edit_menu = SubmenuBuilder::new(app, "Edit")
+        .item(&undo)
+        .item(&redo)
+        .separator()
+        .item(&cut)
+        .item(&copy)
+        .item(&paste)
+        .item(&delete)
+        .separator()
+        .item(&select_all)
+        .separator()
+        .item(&resize)
+        .item(&crop)
+        .separator()
+        .item(&flip_h)
+        .item(&flip_v)
+        .item(&rot_r)
+        .item(&rot_l)
+        .item(&rot_180)
+        .build()?;
+    let view_menu = SubmenuBuilder::new(app, "View")
+        .item(&zoom_in)
+        .item(&zoom_out)
+        .item(&actual)
+        .item(&fit)
+        .build()?;
+
+    MenuBuilder::new(app)
+        .item(&app_menu)
+        .item(&file_menu)
+        .item(&edit_menu)
+        .item(&view_menu)
+        .build()
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     #[cfg(target_os = "macos")]
@@ -393,6 +522,25 @@ pub fn run() {
             get_window_file,
             open_new_window
         ])
+        .setup(|app| {
+            let menu = build_app_menu(app.handle())?;
+            app.set_menu(menu)?;
+            strip_edit_menu_system_items(app.handle().clone());
+            Ok(())
+        })
+        .on_menu_event(|app, event| {
+            let Some(win) = focused_editor(app) else {
+                return;
+            };
+            // Window::emit fans out to every target. The listener is registered
+            // for this window only, so the event has to be addressed to it or
+            // every open document runs the same command.
+            let _ = win.emit_to(
+                tauri::EventTarget::window(win.label()),
+                "menu-action",
+                event.id.0.clone(),
+            );
+        })
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::Destroyed = event {
                 use tauri::Manager;

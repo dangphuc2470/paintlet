@@ -282,9 +282,34 @@ export function CanvasStage() {
       if (selectionMarqueeRef.current && engine.selection) {
         const s = engine.selection;
         const curZoom = usePaintStore.getState().view.zoom;
-        selectionMarqueeRef.current.style.transform = `translate3d(${s.x * curZoom}px, ${s.y * curZoom}px, 0)`;
-        selectionMarqueeRef.current.style.width = `${Math.max(1, s.w * curZoom)}px`;
-        selectionMarqueeRef.current.style.height = `${Math.max(1, s.h * curZoom)}px`;
+        // left/top, not transform. A transformed box keeps WebKit from
+        // re-resolving the edge grips' top/bottom when only the height changes,
+        // so the midpoint dots stay put while the selection grows up or down.
+        const boxW = Math.max(1, s.w * curZoom);
+        const boxH = Math.max(1, s.h * curZoom);
+        const marquee = selectionMarqueeRef.current;
+        marquee.style.transform = "none";
+        marquee.style.left = `${s.x * curZoom}px`;
+        marquee.style.top = `${s.y * curZoom}px`;
+        marquee.style.width = `${boxW}px`;
+        marquee.style.height = `${boxH}px`;
+        // Percentages (top/left: 50%) are not recomputed when only the height
+        // changes, so the edge-midpoint grips stay where they were. Pin them
+        // in pixels from the live box instead.
+        const half = 3.5;
+        for (const grip of marquee.querySelectorAll<HTMLElement>("[data-grip]")) {
+          const id = grip.dataset.grip;
+          if (id !== "n" && id !== "s" && id !== "e" && id !== "w") continue;
+          grip.style.right = "auto";
+          grip.style.bottom = "auto";
+          grip.style.transform = "none";
+          if (id === "n" || id === "s") grip.style.left = `${boxW / 2 - half}px`;
+          if (id === "w") grip.style.left = `${-half}px`;
+          if (id === "e") grip.style.left = `${boxW - half}px`;
+          if (id === "n") grip.style.top = `${-half}px`;
+          if (id === "s") grip.style.top = `${boxH - half}px`;
+          if (id === "e" || id === "w") grip.style.top = `${boxH / 2 - half}px`;
+        }
       }
       raf = requestAnimationFrame(loop);
     };
@@ -923,9 +948,10 @@ export function CanvasStage() {
           {hasSelection && engine.selection && !engine.hasLassoOutline() && (
             <div
               ref={selectionMarqueeRef}
-              className="pointer-events-none absolute left-0 top-0 z-20 will-change-transform"
+              className="pointer-events-none absolute z-20"
               style={{
-                transform: `translate3d(${engine.selection.x * zoom}px, ${engine.selection.y * zoom}px, 0)`,
+                left: engine.selection.x * zoom,
+                top: engine.selection.y * zoom,
                 width: Math.max(1, engine.selection.w * zoom),
                 height: Math.max(1, engine.selection.h * zoom),
               }}
@@ -959,17 +985,18 @@ export function CanvasStage() {
                   {(
                     [
                       ["nw", { left: -3.5, top: -3.5 }],
-                      ["n", { top: -3.5, left: "50%", transform: "translateX(-50%)" }],
+                      ["n", { top: -3.5, left: -3.5 }],
                       ["ne", { right: -3.5, top: -3.5 }],
-                      ["e", { right: -3.5, top: "50%", transform: "translateY(-50%)" }],
+                      ["e", { right: -3.5, top: -3.5 }],
                       ["se", { right: -3.5, bottom: -3.5 }],
-                      ["s", { bottom: -3.5, left: "50%", transform: "translateX(-50%)" }],
+                      ["s", { bottom: -3.5, left: -3.5 }],
                       ["sw", { left: -3.5, bottom: -3.5 }],
-                      ["w", { left: -3.5, top: "50%", transform: "translateY(-50%)" }],
+                      ["w", { left: -3.5, top: -3.5 }],
                     ] as const
                   ).map(([id, pos]) => (
                     <div
                       key={id}
+                      data-grip={id}
                       className="absolute z-20 h-[7px] w-[7px] border border-black bg-white shadow-xs"
                       style={pos}
                     />

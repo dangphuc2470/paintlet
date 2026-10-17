@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { engine, usePaintStore } from "./state/store";
 import { stageHooks } from "./state/stageHooks";
 import type { ToolId } from "./engine/types";
-import { installAppMenu } from "./menu/appMenu";
+import { bindMenuActions } from "./menu/appMenu";
 import * as A from "./actions";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { listen } from "@tauri-apps/api/event";
@@ -66,12 +66,15 @@ function App() {
       .catch(console.error);
   }, []);
 
-  // Build the native macOS menu bar once. Its items call straight into the
-  // action layer (File/Edit/Image/View + ⌘-accelerators).
+  // The menu bar is app-global and built once in Rust. Each editor window
+  // listens and runs the command on its own canvas, so ⌘C/⌘V hit the focused
+  // window instead of whichever webview last installed the menu.
   useEffect(() => {
-    installAppMenu().catch((err) =>
-      console.error("Failed to install app menu:", err),
-    );
+    let unlisten: (() => void) | undefined;
+    bindMenuActions()
+      .then((u) => (unlisten = u))
+      .catch((err) => console.error("Failed to bind app menu:", err));
+    return () => unlisten?.();
   }, []);
 
   // Guard the window close button: if the document has unsaved changes, ask
@@ -119,9 +122,8 @@ function App() {
   // which starts with no data-theme of its own.
   useEffect(() => applyTheme(theme), [theme]);
 
-  // Keyboard: zoom (⌘+/-/0), ⌘Y redo, delete and nudge the selection, and
-  // single-key tool switching. ⌘-combos owned by the native menu (undo, save,
-  // clipboard, …) fall through.
+  // Keyboard lives on this window. The macOS menu bar is shared, so ⌘-keys
+  // must be handled here — only the webview that has focus receives them.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const el = document.activeElement as HTMLElement | null;
@@ -132,26 +134,63 @@ function App() {
           el.isContentEditable);
 
       if (e.metaKey || e.ctrlKey) {
-        if (e.key === "=" || e.key === "+") {
+        const key = e.key.toLowerCase();
+        if (key === "=" || key === "+") {
           e.preventDefault();
           A.zoomIn();
-        } else if (e.key === "-" || e.key === "_") {
+        } else if (key === "-" || key === "_") {
           e.preventDefault();
           A.zoomOut();
-        } else if (e.key === "0") {
+        } else if (key === "0") {
           e.preventDefault();
           A.actualSize();
-        } else if (e.key === "9") {
+        } else if (key === "9") {
           e.preventDefault();
           A.fitToWindow();
-        } else if (e.key.toLowerCase() === "y") {
-          // Paint's redo key, kept alongside the menu's ⇧⌘Z. It lives here
-          // rather than on the menu item because an item carries one
-          // accelerator, and ⇧⌘Z is the one worth showing on a Mac.
+        } else if (key === "y") {
           e.preventDefault();
           A.redo();
+        } else if (key === "a") {
+          e.preventDefault();
+          A.selectAll();
+        } else if (key === "c") {
+          e.preventDefault();
+          A.copy();
+        } else if (key === "x") {
+          e.preventDefault();
+          A.cut();
+        } else if (key === "v") {
+          e.preventDefault();
+          A.paste();
+        } else if (key === "z" && e.shiftKey) {
+          e.preventDefault();
+          A.redo();
+        } else if (key === "z") {
+          e.preventDefault();
+          A.undo();
+        } else if (key === "s" && e.shiftKey) {
+          e.preventDefault();
+          A.saveFileAs();
+        } else if (key === "s") {
+          e.preventDefault();
+          A.saveFile();
+        } else if (key === "n") {
+          e.preventDefault();
+          A.newDocument();
+        } else if (key === "o") {
+          e.preventDefault();
+          A.openFile();
+        } else if (key === "w") {
+          e.preventDefault();
+          A.closeWindow();
+        } else if (key === ",") {
+          e.preventDefault();
+          A.openSettingsDialog();
+        } else if (key === "q") {
+          e.preventDefault();
+          A.quitApp();
         }
-        return; // other ⌘-combos belong to the menu
+        return;
       }
 
       if (editable) return;

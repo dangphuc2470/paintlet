@@ -1,3 +1,5 @@
+import { useEffect, useState } from "react";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { usePaintStore } from "../state/store";
 import { Logo } from "./Logo";
 
@@ -12,6 +14,30 @@ export function TitleBar() {
   // punctuation both Windows Paint and the macOS convention use. An unsaved
   // document is "Untitled", with no extension, since it has no file yet.
   const name = filePath ? filePath.split("/").pop() : "Untitled";
+  const [focused, setFocused] = useState(false);
+
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    let cancelled = false;
+    const win = getCurrentWindow();
+    win
+      .isFocused()
+      .then((f) => {
+        if (!cancelled) setFocused(f);
+      })
+      .catch(() => {});
+    win
+      .onFocusChanged(({ payload }) => setFocused(payload))
+      .then((u) => {
+        if (cancelled) u();
+        else unlisten = u;
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  }, []);
 
   return (
     <div
@@ -19,7 +45,10 @@ export function TitleBar() {
       className="flex h-7 shrink-0 items-center justify-center gap-1.5 bg-surface text-xs text-ink-muted select-none"
     >
       <Logo size={15} />
-      <span data-tauri-drag-region>
+      <span
+        data-tauri-drag-region
+        className={focused ? "font-bold text-ink" : undefined}
+      >
         {isDirty ? "• " : ""}{name} - Paint
       </span>
     </div>

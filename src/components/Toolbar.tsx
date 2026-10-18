@@ -7,6 +7,7 @@ import { Icon, type IconName } from "./Icon";
 import { ToolButton } from "./ToolButton";
 import { ColorControls } from "./ColorControls";
 import { TextOptions } from "./TextOptions";
+import { selectAll, toggleTransparentSelection } from "../actions";
 
 // `key` is the tool's shortcut letter, present only for the tools Windows Paint
 // gives one (see TOOL_KEYS in App.tsx); the rest are mouse-only there and here.
@@ -178,6 +179,9 @@ function ContextGroup() {
 export function Toolbar() {
   const canUndo = usePaintStore((s) => s.canUndo);
   const canRedo = usePaintStore((s) => s.canRedo);
+  const activeToolId = usePaintStore((s) => s.activeToolId);
+  const setTool = usePaintStore((s) => s.setTool);
+  const transparentSelection = usePaintStore((s) => s.transparentSelection);
 
   return (
     <div className="flex shrink-0 items-stretch gap-1 border-b border-hairline bg-surface px-2 py-1.5">
@@ -192,7 +196,45 @@ export function Toolbar() {
 
       <Divider />
       <Group label="Select">
-        <ToolGrid tools={SELECT_TOOLS} />
+        <div className="grid grid-flow-col grid-rows-2 gap-0.5">
+          {SELECT_TOOLS.map((t) => {
+            const enabled = isImplemented(t.id);
+            return (
+              <ToolButton
+                key={t.id}
+                title={
+                  !enabled
+                    ? `${t.label} — coming soon`
+                    : t.key
+                      ? `${t.label} (${t.key})`
+                      : t.label
+                }
+                active={activeToolId === t.id}
+                disabled={!enabled}
+                onClick={() => setTool(t.id)}
+              >
+                <Icon name={t.icon} />
+              </ToolButton>
+            );
+          })}
+          <ToolButton
+            title="Select all (⌘A)"
+            onClick={() => selectAll()}
+          >
+            <Icon name="selectAll" />
+          </ToolButton>
+          <ToolButton
+            title={
+              transparentSelection
+                ? "Transparent selection: ON (Color 2 is transparent)"
+                : "Transparent selection: OFF (Background is opaque)"
+            }
+            active={transparentSelection}
+            onClick={toggleTransparentSelection}
+          >
+            <Icon name="transparentSelection" />
+          </ToolButton>
+        </div>
       </Group>
 
       <Divider />

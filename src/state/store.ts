@@ -12,7 +12,15 @@ import type {
 // One engine instance for the app's lifetime. Deliberately OUTSIDE the reactive
 // store: pixel data must never live in React state or it would re-render on
 // every stroke. Components import `engine` directly for imperative calls.
-export const engine = new CanvasEngine();
+const globalObj =
+  typeof window !== "undefined"
+    ? (window as unknown as { __paintlet_engine?: CanvasEngine })
+    : {};
+export const engine: CanvasEngine =
+  globalObj.__paintlet_engine ?? new CanvasEngine();
+if (typeof window !== "undefined") {
+  globalObj.__paintlet_engine = engine;
+}
 
 // Size a new document opens at. Matches CanvasEngine's own width/height
 // defaults, which is what attach() falls back to before anything is loaded.
@@ -48,6 +56,7 @@ interface PaintState {
   canRedo: boolean;
   hasSelection: boolean;
   selectionSize: { w: number; h: number } | null; // status-bar readout
+  transparentSelection: boolean;
 
   // — actions —
   setTool: (id: ToolId) => void;
@@ -61,8 +70,11 @@ interface PaintState {
   setCursorPos: (p: Point | null) => void;
   setTheme: (t: Theme) => void;
   setFilePath: (p: string | null) => void;
+  setIsDirty: (d: boolean) => void;
   setResizeDialogOpen: (open: boolean) => void;
   setSettingsDialogOpen: (open: boolean) => void;
+  setTransparentSelection: (enabled: boolean) => void;
+  toggleTransparentSelection: () => void;
   setEngineState: (s: {
     canUndo: boolean;
     canRedo: boolean;
@@ -102,6 +114,7 @@ export const usePaintStore = create<PaintState>((set) => ({
   canRedo: false,
   hasSelection: false,
   selectionSize: null,
+  transparentSelection: false,
 
   setTool: (id) =>
     set((s) =>
@@ -130,8 +143,19 @@ export const usePaintStore = create<PaintState>((set) => ({
     set({ theme: t });
   },
   setFilePath: (p) => set({ filePath: p }),
+  setIsDirty: (d) => set({ isDirty: d }),
   setResizeDialogOpen: (open) => set({ resizeDialogOpen: open }),
   setSettingsDialogOpen: (open) => set({ settingsDialogOpen: open }),
+  setTransparentSelection: (enabled) => {
+    engine.setTransparentSelection(enabled);
+    set({ transparentSelection: enabled });
+  },
+  toggleTransparentSelection: () =>
+    set((s) => {
+      const next = !s.transparentSelection;
+      engine.setTransparentSelection(next);
+      return { transparentSelection: next };
+    }),
   setEngineState: (s) =>
     set({
       canUndo: s.canUndo,

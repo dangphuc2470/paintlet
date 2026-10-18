@@ -20,6 +20,8 @@ export type IconName =
   | "polygon"
   | "select"
   | "lasso"
+  | "selectAll"
+  | "transparentSelection"
   | "swap"
   | "close";
 
@@ -94,6 +96,16 @@ const PATHS: Record<IconName, ReactNode> = {
       d="M12 4c5 0 9 2.5 9 6s-4 6-9 6c-3 0-5.5-.8-7.2-2C3.6 13.2 3 12 3 10c0-3.5 4-6 9-6Zm-7 10.5c-1 1.5-1.5 3.5-1.5 5.5"
       strokeDasharray="3.5 3"
     />
+  ),
+  selectAll: (
+    <rect x="3" y="3" width="18" height="18" rx="1.5" strokeDasharray="3.5 3" />
+  ),
+  transparentSelection: (
+    <>
+      <rect x="3" y="3" width="18" height="18" rx="1.5" strokeDasharray="3.5 3" />
+      <path d="m4 14 10-10" />
+      <path d="m10 20 10-10" />
+    </>
   ),
   swap: (
     <>

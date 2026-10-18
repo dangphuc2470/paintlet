@@ -1,5 +1,5 @@
-import { ask } from "@tauri-apps/plugin-dialog";
 import { invoke } from "@tauri-apps/api/core";
+import { ask } from "@tauri-apps/plugin-dialog";
 import { DEFAULT_CANVAS_SIZE, engine, usePaintStore } from "./state/store";
 import { stageHooks } from "./state/stageHooks";
 import { STAGE_PADDING, viewport } from "./state/viewport";
@@ -73,6 +73,17 @@ export function saveFileAs(): void {
   void saveImage(true);
 }
 
+export async function closeWindow(): Promise<void> {
+  stageHooks.flushTextEdit?.();
+  if (!(await confirmDiscard("Close Window"))) return;
+  const { getCurrentWindow } = await import("@tauri-apps/api/window");
+  await getCurrentWindow().destroy();
+}
+
+export function quitApp(): void {
+  closeWindow();
+}
+
 // — Edit —
 // Undo/redo first cancel any in-progress tool gesture (a half-built polygon or
 // curve) so its rubber-band preview can't linger over the restored pixels.
@@ -115,6 +126,9 @@ export function selectAll(): void {
 export function deleteSelection(): void {
   if (editableFocused()) return;
   engine.deleteSelection(usePaintStore.getState().color2);
+}
+export function toggleTransparentSelection(): void {
+  usePaintStore.getState().toggleTransparentSelection();
 }
 // Move the selection by whole pixels from the keyboard. Mirrors what a drag
 // does: lift the pixels into a float on the first press (leaving a

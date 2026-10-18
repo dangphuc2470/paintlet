@@ -1,99 +1,43 @@
-import {
-  Menu,
-  MenuItem,
-  PredefinedMenuItem,
-  Submenu,
-} from "@tauri-apps/api/menu";
-import { invoke } from "@tauri-apps/api/core";
+import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import * as A from "../actions";
 
-// Build the native macOS menu bar in JS. Each item's `action` calls straight
-// into the shared command layer, so no Rust round-trip is needed. This is the
-// natural Mac home for File/Edit/Image/View and gives real ⌘-accelerators.
-//
-// Note on shortcuts: menu accelerators are app-global on macOS. Single-key tool
-// shortcuts (P/B/E/…) are therefore handled in a keydown listener instead — as
-// menu accelerators they'd hijack every keystroke in the text editor.
+// The native menu is built once in Rust and is app-global on macOS. A click
+// (or ⌘-accelerator) is emitted only to the focused editor window. Listen on
+// this webview, not the global event bus — a global listener runs the command
+// in every open window at once.
 
-const item = (
-  text: string,
-  accelerator: string | undefined,
-  action: () => void,
-) => MenuItem.new({ text, accelerator, action });
+const ACTIONS: Record<string, () => void> = {
+  about: A.openAboutWindow,
+  settings: A.openSettingsDialog,
+  quit: A.quitApp,
+  new: A.newDocument,
+  open: A.openFile,
+  save: A.saveFile,
+  "save-as": A.saveFileAs,
+  close: A.closeWindow,
+  undo: A.undo,
+  redo: A.redo,
+  cut: A.cut,
+  copy: A.copy,
+  paste: A.paste,
+  delete: A.deleteSelection,
+  "select-all": A.selectAll,
+  "transparent-selection": A.toggleTransparentSelection,
+  resize: A.openResizeDialog,
+  crop: A.crop,
+  "flip-h": A.flipHorizontal,
+  "flip-v": A.flipVertical,
+  "rotate-right": A.rotateRight,
+  "rotate-left": A.rotateLeft,
+  "rotate-180": A.rotate180,
+  "zoom-in": A.zoomIn,
+  "zoom-out": A.zoomOut,
+  "actual-size": A.actualSize,
+  fit: A.fitToWindow,
+};
 
-const sep = () => PredefinedMenuItem.new({ item: "Separator" });
-
-export async function installAppMenu(): Promise<void> {
-  // Deliberately minimal: About + Quit. The default Hide / Hide Others / Show
-  // All items are dropped — they're clutter for a single-window paint app.
-  const appMenu = await Submenu.new({
-    text: "Paintlet",
-    items: [
-      await item("About Paintlet", undefined, A.openAboutWindow),
-      await sep(),
-      await item("Settings…", "CmdOrCtrl+,", A.openSettingsDialog),
-      await sep(),
-      await PredefinedMenuItem.new({ item: "Quit", text: "Quit Paintlet" }),
-    ],
+export function bindMenuActions(): Promise<() => void> {
+  return getCurrentWebviewWindow().listen<string>("menu-action", (event) => {
+    ACTIONS[event.payload]?.();
   });
-
-  const fileMenu = await Submenu.new({
-    text: "File",
-    items: [
-      await item("New", "CmdOrCtrl+N", A.newDocument),
-      await item("Open…", "CmdOrCtrl+O", A.openFile),
-      await sep(),
-      await item("Save", "CmdOrCtrl+S", A.saveFile),
-      await item("Save As…", "CmdOrCtrl+Shift+S", A.saveFileAs),
-      await sep(),
-      await PredefinedMenuItem.new({ item: "CloseWindow", text: "Close Window" }),
-    ],
-  });
-
-  // Edit holds the clipboard/selection commands and, folded in below, the image
-  // operations (there's no separate Image menu — those commands live here).
-  const editMenu = await Submenu.new({
-    text: "Edit",
-    items: [
-      await item("Undo", "CmdOrCtrl+Z", A.undo),
-      await item("Redo", "CmdOrCtrl+Shift+Z", A.redo),
-      await sep(),
-      await item("Cut", "CmdOrCtrl+X", A.cut),
-      await item("Copy", "CmdOrCtrl+C", A.copy),
-      await item("Paste", "CmdOrCtrl+V", A.paste),
-      await item("Delete", undefined, A.deleteSelection),
-      await sep(),
-      await item("Select All", "CmdOrCtrl+A", A.selectAll),
-      await sep(),
-      await item("Resize…", undefined, A.openResizeDialog),
-      await item("Crop to Selection", undefined, A.crop),
-      await sep(),
-      await item("Flip Horizontal", undefined, A.flipHorizontal),
-      await item("Flip Vertical", undefined, A.flipVertical),
-      await item("Rotate 90° Right", undefined, A.rotateRight),
-      await item("Rotate 90° Left", undefined, A.rotateLeft),
-      await item("Rotate 180°", undefined, A.rotate180),
-    ],
-  });
-
-  const viewMenu = await Submenu.new({
-    text: "View",
-    items: [
-      await item("Zoom In", undefined, A.zoomIn),
-      await item("Zoom Out", undefined, A.zoomOut),
-      await item("Actual Size", undefined, A.actualSize),
-      await item("Fit to Window", undefined, A.fitToWindow),
-    ],
-  });
-
-  const menu = await Menu.new({
-    items: [appMenu, fileMenu, editMenu, viewMenu],
-  });
-  await menu.setAsAppMenu();
-
-  // macOS injects "Writing Tools" / "AutoFill" into any menu titled "Edit"
-  // when it becomes the main menu; there's no defaults switch for them (unlike
-  // Dictation/Emoji, suppressed at startup on the Rust side). Strip them now
-  // that the menu is installed.
-  await invoke("strip_edit_menu_system_items");
 }

@@ -1,6 +1,5 @@
 import { History } from "./History";
 import { hexToRgba } from "./color";
-import { selectionHandles } from "./selectionHandles";
 import type { Point, Rect } from "./types";
 
 // Snapshot of engine state that the UI mirrors (menu/button enablement, title
@@ -46,6 +45,10 @@ export class CanvasEngine {
   // finalizing closes it back to the start.
   private selPoly: Point[] | null = null;
   private selPolyClosed = false;
+
+  hasLassoOutline(): boolean {
+    return !!this.selPoly;
+  }
   // Lifted/pasted pixels that hover above the base until committed. Drawn on the
   // selection layer at (floatX, floatY); folded into the base on commit.
   private floatCanvas: HTMLCanvasElement | null = null;
@@ -68,6 +71,13 @@ export class CanvasEngine {
   // hole a lifted selection leaves and, as the transparent-selection key, to
   // knock out matching pixels when a float is stamped down.
   private bgColor = "#ffffff";
+  private transparentSelection = false;
+
+  setTransparentSelection(enabled: boolean): void {
+    if (this.transparentSelection === enabled) return;
+    this.transparentSelection = enabled;
+    if (this.floatCanvas) this.rebuildFloatDisplay();
+  }
 
   // Bind the engine to the three stacked canvas elements the CanvasStage mounts.
   // Called once on mount; programmatic resizes go through the size-changing
@@ -101,6 +111,10 @@ export class CanvasEngine {
     this.emit();
   }
 
+  get isDirty(): boolean {
+    return this.dirty;
+  }
+
   // The store wires this up to mirror engine state into React.
   setOnChange(cb: (c: EngineChange) => void): void {
     this.onChange = cb;
@@ -116,9 +130,9 @@ export class CanvasEngine {
   }
 
   // Rebuild `floatDisplay` from `floatCanvas`, knocking the background color out
-  // to transparent (exact match, like Paint's transparent selection).
+  // to transparent (with tolerance so anti-aliased edges don't leave white halos).
   private rebuildFloatDisplay(): void {
-    if (!this.floatCanvas) {
+    if (!this.floatCanvas || !this.transparentSelection) {
       this.floatDisplay = null;
       return;
     }
@@ -132,16 +146,22 @@ export class CanvasEngine {
     const img = ctx.getImageData(0, 0, src.width, src.height);
     const d = img.data;
     for (let i = 0; i < d.length; i += 4) {
-      if (d[i] === br && d[i + 1] === bg && d[i + 2] === bb) d[i + 3] = 0;
+      const dr = Math.abs(d[i] - br);
+      const dg = Math.abs(d[i + 1] - bg);
+      const db = Math.abs(d[i + 2] - bb);
+      // Knock out background color and near-background pixels
+      if (dr <= 16 && dg <= 16 && db <= 16) {
+        d[i + 3] = 0;
+      }
     }
     ctx.putImageData(img, 0, 0);
     this.floatDisplay = c;
   }
 
 
-  private emit(): void {
+  emit(): void {
     this.onChange?.({
-      canUndo: this.history.canUndo(),
+      canUndo: this.history.canUndo() || this.floatCanvas != null,
       canRedo: this.history.canRedo(),
       isDirty: this.dirty,
       width: this.width,
@@ -242,6 +262,13 @@ export class CanvasEngine {
   }
 
   undo(): void {
+    if (this.floatCanvas) {
+      const snap = this.history.current();
+      if (snap) {
+        this.applySnapshot(snap);
+        return;
+      }
+    }
     const snap = this.history.undo();
     if (snap) this.applySnapshot(snap);
   }
@@ -563,6 +590,7 @@ export class CanvasEngine {
   // transparent outside it) and the hole matches the outline, not the box.
   beginFloat(bgColor: string): void {
     if (!this.selection || this.floatCanvas) return;
+    this.bgColor = bgColor;
     const r = this.selection;
     const path = this.selPath();
     const fc = document.createElement("canvas");
@@ -588,6 +616,27 @@ export class CanvasEngine {
     else this.base.fillRect(r.x, r.y, r.w, r.h);
     this.base.restore();
     this.dirty = true;
+    this.emit();
+  }
+
+  // Stamp a copy of the floating content onto the base without discarding the float
+  // (Windows Paint Shift-move trail / smear effect).
+  stampFloat(): void {
+    if (!this.floatCanvas) return;
+    this.base.drawImage(this.floatDisplay ?? this.floatCanvas, this.floatX, this.floatY);
+    this.dirty = true;
+  }
+
+  // Nudge selection/float by delta (dx, dy). If stamp is true (Shift key held), stamps along the path!
+  nudgeSelection(dx: number, dy: number, stamp = false, bgColor = "#ffffff"): void {
+    if (!this.hasSelectionOrFloat()) return;
+    if (!this.floatCanvas) {
+      this.beginFloat(bgColor);
+    }
+    if (stamp) {
+      this.stampFloat();
+    }
+    this.moveFloatTo(this.floatX + dx, this.floatY + dy);
     this.emit();
   }
 
@@ -737,11 +786,23 @@ export class CanvasEngine {
   // drag. Additive (no hole), so deleting it just removes it. If the paste is
   // larger than the canvas, grow the canvas to fit rather than clipping it —
   // matching Paint, which enlarges the bitmap to hold a larger paste.
-  pasteImageData(img: ImageData): void {
+  pasteImageData(img: ImageData, at?: { x: number; y: number }): void {
+    this.pasteImage(img, img.width, img.height, at);
+  }
+
+  pasteImage(
+    source: CanvasImageSource | ImageData,
+    width: number,
+    height: number,
+    at?: { x: number; y: number },
+  ): void {
     this.commitFloat();
 
-    const newW = Math.max(this.width, img.width);
-    const newH = Math.max(this.height, img.height);
+    const posX = Math.round(at?.x ?? 0);
+    const posY = Math.round(at?.y ?? 0);
+
+    const newW = Math.max(this.width, posX + width);
+    const newH = Math.max(this.height, posY + height);
     if (newW !== this.width || newH !== this.height) {
       const prev = this.copyBase(); // existing pixels, at the old size
       this.applySize(newW, newH); // clears all three layers
@@ -750,25 +811,28 @@ export class CanvasEngine {
     }
 
     const fc = document.createElement("canvas");
-    fc.width = img.width;
-    fc.height = img.height;
-    fc.getContext("2d")!.putImageData(img, 0, 0);
+    fc.width = width;
+    fc.height = height;
+    const fctx = fc.getContext("2d")!;
+    if (source instanceof ImageData) {
+      fctx.putImageData(source, 0, 0);
+    } else {
+      fctx.drawImage(source, 0, 0);
+    }
     this.floatCanvas = fc;
     this.floatOrig = fc;
     this.rebuildFloatDisplay();
     this.floatLifted = false;
-    this.floatX = 0;
-    this.floatY = 0;
-    this.setSelection({ x: 0, y: 0, w: img.width, h: img.height });
+    this.floatX = posX;
+    this.floatY = posY;
+    this.setSelection({ x: posX, y: posY, w: width, h: height });
     this.dirty = true;
     this.emit();
+    this.renderSelection(0);
   }
 
-  // Repaint the selection layer: floating content, then animated marching ants
-  // along the current marquee — the rect, or the lasso outline when one exists —
-  // and (when asked) the eight resize grips. Driven by CanvasStage's rAF loop;
-  // `zoom` keeps the grips a constant on-screen size despite the CSS scale.
-  renderSelection(dashOffset = 0, zoom = 1, showHandles = false): void {
+  // Repaint the selection layer: floating content, plus lasso path when active.
+  renderSelection(dashOffset = 0): void {
     const s = this.sel;
     s.clearRect(0, 0, this.width, this.height);
     const shown = this.floatDisplay ?? this.floatCanvas;
@@ -776,40 +840,18 @@ export class CanvasEngine {
     const r = this.selection;
     if (!r || r.w < 1 || r.h < 1) return;
     const path = this.selPath(false);
-    s.save();
-    s.lineWidth = 1;
-    s.setLineDash([4, 4]);
-    s.strokeStyle = "#ffffff";
-    s.lineDashOffset = -dashOffset;
-    if (path) s.stroke(path);
-    else
-      s.strokeRect(r.x + 0.5, r.y + 0.5, Math.max(0, r.w - 1), Math.max(0, r.h - 1));
-    s.strokeStyle = "#000000";
-    s.lineDashOffset = -dashOffset + 4;
-    if (path) s.stroke(path);
-    else
-      s.strokeRect(r.x + 0.5, r.y + 0.5, Math.max(0, r.w - 1), Math.max(0, r.h - 1));
-    s.restore();
-
-    if (showHandles) this.drawHandles(r, zoom);
-  }
-
-  // Small square grips at the selection's corners and edge midpoints. Sized in
-  // image px as (constant / zoom) so they render at a fixed on-screen size.
-  private drawHandles(r: Rect, zoom: number): void {
-    const s = this.sel;
-    const size = 7 / zoom; // ~7 screen px
-    const half = size / 2;
-    s.save();
-    s.setLineDash([]);
-    s.lineWidth = 1 / zoom;
-    for (const h of selectionHandles(r)) {
-      s.fillStyle = "#ffffff";
+    if (path) {
+      s.save();
+      s.lineWidth = 1;
+      s.setLineDash([4, 4]);
+      s.strokeStyle = "#ffffff";
+      s.lineDashOffset = -dashOffset;
+      s.stroke(path);
       s.strokeStyle = "#000000";
-      s.fillRect(h.x - half, h.y - half, size, size);
-      s.strokeRect(h.x - half, h.y - half, size, size);
+      s.lineDashOffset = -dashOffset + 4;
+      s.stroke(path);
+      s.restore();
     }
-    s.restore();
   }
 
   // Whether a point (image px) is inside the current selection — for the select

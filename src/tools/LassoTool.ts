@@ -44,6 +44,7 @@ export class LassoTool implements Tool {
         ctx.engine.setLassoPreview(this.points);
       }
     } else if (this.mode === "move") {
+      if (p.shiftKey) ctx.engine.stampFloat();
       ctx.engine.moveFloatTo(
         this.originX + (p.point.x - this.start.x),
         this.originY + (p.point.y - this.start.y),
@@ -55,6 +56,8 @@ export class LassoTool implements Tool {
     if (this.mode === "new") {
       ctx.engine.finalizeLasso(this.points);
       this.points = [];
+    } else if (this.mode === "move") {
+      ctx.engine.emit();
     }
     this.mode = "idle";
   }

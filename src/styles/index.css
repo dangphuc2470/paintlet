@@ -78,3 +78,23 @@ body {
   user-select: none;
   -webkit-user-select: none;
 }
+
+@keyframes marchingAnts {
+  from {
+    stroke-dashoffset: 0;
+  }
+  to {
+    stroke-dashoffset: -8;
+  }
+}
+
+.marching-ants-white {
+  stroke-dasharray: 4 4;
+  animation: marchingAnts 1.2s linear infinite;
+}
+
+.marching-ants-black {
+  stroke-dasharray: 4 4;
+  stroke-dashoffset: 4;
+  animation: marchingAnts 1.2s linear infinite;
+}

@@ -33,10 +33,22 @@ export const DEFAULT_CANVAS_SIZE = { w: 800, h: 600 };
 // them without importing the engine.
 const initialSettings = loadSettings();
 
+export type BrushType =
+  | "brush"
+  | "calligraphy1"
+  | "calligraphy2"
+  | "airbrush"
+  | "oil"
+  | "crayon"
+  | "marker"
+  | "naturalPencil"
+  | "watercolor";
+
 interface PaintState {
   // — config / UI state (reactive) —
   activeToolId: ToolId;
   previousToolId: ToolId; // what the eyedropper returns to after a pick
+  brushType: BrushType;
   color1: string; // foreground (primary button)
   color2: string; // background (secondary button)
   brushSize: number; // continuous width for pencil/brush/eraser
@@ -62,6 +74,7 @@ interface PaintState {
 
   // — actions —
   setTool: (id: ToolId) => void;
+  setBrushType: (t: BrushType) => void;
   setColor1: (c: string) => void;
   setColor2: (c: string) => void;
   swapColors: () => void;
@@ -94,6 +107,7 @@ interface PaintState {
 export const usePaintStore = create<PaintState>((set) => ({
   activeToolId: "pencil",
   previousToolId: "pencil",
+  brushType: "brush",
   color1: "#000000",
   color2: "#ffffff",
   brushSize: 4,
@@ -129,6 +143,12 @@ export const usePaintStore = create<PaintState>((set) => ({
         ? {}
         : { activeToolId: id, previousToolId: s.activeToolId },
     ),
+  setBrushType: (t) =>
+    set((s) => ({
+      brushType: t,
+      activeToolId: "brush",
+      previousToolId: s.activeToolId,
+    })),
   setColor1: (c) => set({ color1: c }),
   setColor2: (c) => {
     engine.setBgColor(c); // keep the transparent-selection / hole-fill key in sync

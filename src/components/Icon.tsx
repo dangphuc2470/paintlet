@@ -37,6 +37,7 @@ export type IconName =
   | "flipHorizontal"
   | "removeBackground"
   | "brushes"
+  | "brushTip"
   | "opacity"
   | "transparentSelection"
   | "chevronDown"
@@ -275,6 +276,17 @@ const PATHS: Record<IconName, ReactNode> = {
       <path d="M10 4v4" />
       <rect x="5" y="8" width="14" height="13" rx="2" />
       <path d="M5 13h14" />
+    </>
+  ),
+  brushTip: (
+    <>
+      {/* Ferrule (top collar) */}
+      <rect x="7" y="3" width="10" height="5" rx="1" strokeWidth={1.5} />
+      <line x1="7" y1="5.5" x2="17" y2="5.5" strokeWidth={1} />
+      {/* Bristle bundle tapering down */}
+      <path d="M8 8c0 4 1 8 4 12 3-4 4-8 4-12z" strokeWidth={1.5} fill="none" />
+      {/* Inner hair texture lines */}
+      <path d="M12 8v8 M10 8c0 2.5 0.5 5 2 7" strokeWidth={1} opacity={0.6} />
     </>
   ),
   opacity: (

@@ -787,13 +787,22 @@ export class CanvasEngine {
   // larger than the canvas, grow the canvas to fit rather than clipping it —
   // matching Paint, which enlarges the bitmap to hold a larger paste.
   pasteImageData(img: ImageData, at?: { x: number; y: number }): void {
+    this.pasteImage(img, img.width, img.height, at);
+  }
+
+  pasteImage(
+    source: CanvasImageSource | ImageData,
+    width: number,
+    height: number,
+    at?: { x: number; y: number },
+  ): void {
     this.commitFloat();
 
     const posX = Math.round(at?.x ?? 0);
     const posY = Math.round(at?.y ?? 0);
 
-    const newW = Math.max(this.width, posX + img.width);
-    const newH = Math.max(this.height, posY + img.height);
+    const newW = Math.max(this.width, posX + width);
+    const newH = Math.max(this.height, posY + height);
     if (newW !== this.width || newH !== this.height) {
       const prev = this.copyBase(); // existing pixels, at the old size
       this.applySize(newW, newH); // clears all three layers
@@ -802,18 +811,24 @@ export class CanvasEngine {
     }
 
     const fc = document.createElement("canvas");
-    fc.width = img.width;
-    fc.height = img.height;
-    fc.getContext("2d")!.putImageData(img, 0, 0);
+    fc.width = width;
+    fc.height = height;
+    const fctx = fc.getContext("2d")!;
+    if (source instanceof ImageData) {
+      fctx.putImageData(source, 0, 0);
+    } else {
+      fctx.drawImage(source, 0, 0);
+    }
     this.floatCanvas = fc;
     this.floatOrig = fc;
     this.rebuildFloatDisplay();
     this.floatLifted = false;
     this.floatX = posX;
     this.floatY = posY;
-    this.setSelection({ x: posX, y: posY, w: img.width, h: img.height });
+    this.setSelection({ x: posX, y: posY, w: width, h: height });
     this.dirty = true;
     this.emit();
+    this.renderSelection(0);
   }
 
   // Repaint the selection layer: floating content, plus lasso path when active.

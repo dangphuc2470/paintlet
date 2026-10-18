@@ -8,6 +8,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { openFilePath } from "./io/fileIO";
+import { pasteImageBlob } from "./io/clipboard";
 import { TitleBar } from "./components/TitleBar";
 import { Toolbar } from "./components/Toolbar";
 import { CanvasStage } from "./components/CanvasStage";
@@ -122,6 +123,37 @@ function App() {
   // which starts with no data-theme of its own.
   useEffect(() => applyTheme(theme), [theme]);
 
+  // Native clipboard paste event: handles image pasted from macOS WebKit clipboard
+  // directly without depending solely on Tauri IPC or synthetic events.
+  useEffect(() => {
+    const onPaste = (e: ClipboardEvent) => {
+      const el = document.activeElement as HTMLElement | null;
+      const editable =
+        !!el &&
+        (el.tagName === "INPUT" ||
+          el.tagName === "TEXTAREA" ||
+          el.isContentEditable);
+      if (editable) return;
+
+      const items = e.clipboardData?.items;
+      if (!items) return;
+
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i];
+        if (item.type.startsWith("image/")) {
+          e.preventDefault();
+          const file = item.getAsFile();
+          if (file) {
+            void pasteImageBlob(file);
+            return;
+          }
+        }
+      }
+    };
+    window.addEventListener("paste", onPaste);
+    return () => window.removeEventListener("paste", onPaste);
+  }, []);
+
   // Keyboard lives on this window. The macOS menu bar is shared, so ⌘-keys
   // must be handled here — only the webview that has focus receives them.
   useEffect(() => {
@@ -160,8 +192,12 @@ function App() {
           e.preventDefault();
           A.cut();
         } else if (key === "v") {
-          e.preventDefault();
-          A.paste();
+          if (editable) return;
+          // Allow native WebKit 'paste' event to fire for zero-copy ImageBitmap decoding.
+          // Fall back to A.paste() only if no native paste happened.
+          setTimeout(() => {
+            A.paste();
+          }, 60);
         } else if (key === "z" && e.shiftKey) {
           e.preventDefault();
           A.redo();

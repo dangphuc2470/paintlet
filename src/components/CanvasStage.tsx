@@ -1107,13 +1107,13 @@ export function CanvasStage() {
                   {(
                     [
                       ["nw", { left: -3.5, top: -3.5 }],
-                      ["n", { top: -3.5, left: -3.5 }],
+                      ["n", { top: -3.5, left: "50%", transform: "translateX(-50%)" }],
                       ["ne", { right: -3.5, top: -3.5 }],
-                      ["e", { right: -3.5, top: -3.5 }],
+                      ["e", { right: -3.5, top: "50%", transform: "translateY(-50%)" }],
                       ["se", { right: -3.5, bottom: -3.5 }],
-                      ["s", { bottom: -3.5, left: -3.5 }],
+                      ["s", { bottom: -3.5, left: "50%", transform: "translateX(-50%)" }],
                       ["sw", { left: -3.5, bottom: -3.5 }],
-                      ["w", { left: -3.5, top: -3.5 }],
+                      ["w", { left: -3.5, top: "50%", transform: "translateY(-50%)" }],
                     ] as const
                   ).map(([id, pos]) => (
                     <div

@@ -40,7 +40,7 @@ export function TitleBar() {
   return (
     <div
       data-tauri-drag-region
-      className="relative flex h-8 shrink-0 items-center justify-between border-b border-hairline/60 bg-surface px-2 text-xs text-ink-muted select-none"
+      className="relative flex h-8 shrink-0 items-center justify-between bg-surface px-2 text-xs text-ink-muted select-none"
     >
       {/* Quick Action items to the right of traffic lights (traffic lights occupy ~74px) */}
       <div className="flex items-center gap-1 pl-[74px]">

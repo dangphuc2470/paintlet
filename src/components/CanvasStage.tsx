@@ -984,7 +984,7 @@ export function CanvasStage() {
         paddingBottom: "max(60px, 35vh)",
       }
     : {
-        paddingLeft: "115px",
+        paddingLeft: "80px",
         paddingRight: "80px",
         paddingTop: "40px",
         paddingBottom: "40px",

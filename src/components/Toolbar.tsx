@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { usePaintStore } from "../state/store";
-import { isImplemented } from "../tools/registry";
+import { isImplemented, isShapeTool } from "../tools/registry";
 import type { ToolId } from "../engine/types";
 import { Icon, type IconName } from "./Icon";
 import { ToolButton } from "./ToolButton";
@@ -49,6 +49,98 @@ function ContextGroup() {
       </>
     );
   return null;
+}
+
+function SizeAndOpacityControls() {
+  const activeToolId = usePaintStore((s) => s.activeToolId);
+  const brushSize = usePaintStore((s) => s.brushSize);
+  const setBrushSize = usePaintStore((s) => s.setBrushSize);
+  const shapeSize = usePaintStore((s) => s.shapeSize);
+  const setShapeSize = usePaintStore((s) => s.setShapeSize);
+  const brushOpacity = usePaintStore((s) => s.brushOpacity);
+  const setBrushOpacity = usePaintStore((s) => s.setBrushOpacity);
+
+  const isShape =
+    activeToolId === "line" ||
+    activeToolId === "curve" ||
+    isShapeTool(activeToolId);
+  const isFreehand = !isShape;
+
+  const currentSize = isFreehand ? brushSize : shapeSize;
+  const min = 1;
+  const max = isFreehand ? 600 : 64;
+
+  const sizeToSlider = (size: number) => {
+    const fraction = (size - min) / (max - min);
+    return Math.round(Math.sqrt(Math.max(0, Math.min(1, fraction))) * 100);
+  };
+
+  const sliderToSize = (val: number) => {
+    const t = Math.max(0, Math.min(100, val)) / 100;
+    return Math.max(min, Math.min(max, Math.round(min + t * t * (max - min))));
+  };
+
+  const handleSizeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newSize = sliderToSize(Number(e.target.value));
+    if (isFreehand) {
+      setBrushSize(newSize);
+    } else {
+      setShapeSize(newSize);
+    }
+  };
+
+  return (
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 py-1">
+      {/* Size Slider */}
+      <div className="flex items-center gap-1.5 text-ink">
+        <span title="Stroke size" className="flex items-center text-ink-muted">
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 20 16"
+            fill="none"
+            stroke="currentColor"
+            strokeLinecap="round"
+          >
+            <path d="M2 3 Q 6 1, 10 3 T 18 3" strokeWidth="1.2" />
+            <path d="M2 8 Q 6 5.5, 10 8 T 18 8" strokeWidth="2.2" />
+            <path d="M2 13 Q 6 10.5, 10 13 T 18 13" strokeWidth="3.4" />
+          </svg>
+        </span>
+        <input
+          type="range"
+          min={0}
+          max={100}
+          value={sizeToSlider(currentSize)}
+          onChange={handleSizeChange}
+          className="h-1.5 w-20 cursor-pointer accent-[#0078d4]"
+          title={`Size: ${currentSize}px`}
+        />
+        <span className="w-8 text-[11px] font-mono tabular-nums text-ink-muted">
+          {currentSize}px
+        </span>
+      </div>
+
+      {/* Opacity Slider (located to the right of size, wraps if narrow) */}
+      <div className="flex items-center gap-1.5 text-ink">
+        <span title="Opacity" className="flex items-center text-ink-muted">
+          <Icon name="opacity" size={13} />
+        </span>
+        <input
+          type="range"
+          min={1}
+          max={100}
+          value={brushOpacity}
+          onChange={(e) => setBrushOpacity(Number(e.target.value))}
+          className="h-1.5 w-20 cursor-pointer accent-[#0078d4]"
+          title={`Opacity: ${brushOpacity}%`}
+        />
+        <span className="w-8 text-[11px] font-mono tabular-nums text-ink-muted">
+          {brushOpacity}%
+        </span>
+      </div>
+    </div>
+  );
 }
 
 export function Toolbar() {
@@ -231,9 +323,16 @@ export function Toolbar() {
         </div>
       </Group>
 
+      <Divider />
+
+      {/* 6. Size & Opacity Group */}
+      <Group label="Size">
+        <SizeAndOpacityControls />
+      </Group>
+
       <ContextGroup />
 
-      {/* 6. Colors Group, pushed to the right */}
+      {/* 7. Colors Group, pushed to the right */}
       <div className="ml-auto flex items-stretch">
         <Divider />
         <Group label="Colors">

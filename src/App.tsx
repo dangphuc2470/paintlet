@@ -13,7 +13,6 @@ import { TitleBar } from "./components/TitleBar";
 import { Toolbar } from "./components/Toolbar";
 import { CanvasStage } from "./components/CanvasStage";
 import { StatusBar } from "./components/StatusBar";
-import { FloatingSizeSlider } from "./components/FloatingSizeSlider";
 import { ResizeDialog } from "./components/dialogs/ResizeDialog";
 import { SettingsDialog } from "./components/dialogs/SettingsDialog";
 import { SavePromptDialog } from "./components/dialogs/SavePromptDialog";
@@ -273,7 +272,6 @@ function App() {
       <TitleBar />
       <Toolbar />
       <div className="relative flex flex-1 overflow-hidden">
-        <FloatingSizeSlider />
         <CanvasStage />
       </div>
       <StatusBar />

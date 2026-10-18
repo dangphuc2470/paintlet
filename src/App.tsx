@@ -167,16 +167,16 @@ function App() {
 
       if (e.metaKey || e.ctrlKey) {
         const key = e.key.toLowerCase();
-        if (key === "=" || key === "+") {
+        if (key === "=" || key === "+" || e.code === "Equal" || e.code === "NumpadAdd") {
           e.preventDefault();
           A.zoomIn();
-        } else if (key === "-" || key === "_") {
+        } else if (key === "-" || key === "_" || e.code === "Minus" || e.code === "NumpadSubtract") {
           e.preventDefault();
           A.zoomOut();
-        } else if (key === "0") {
+        } else if (key === "0" || e.code === "Digit0" || e.code === "Numpad0") {
           e.preventDefault();
           A.actualSize();
-        } else if (key === "9") {
+        } else if (key === "9" || e.code === "Digit9") {
           e.preventDefault();
           A.fitToWindow();
         } else if (key === "y") {
@@ -191,13 +191,10 @@ function App() {
         } else if (key === "x") {
           e.preventDefault();
           A.cut();
-        } else if (key === "v") {
+        } else if (key === "v" || e.code === "KeyV") {
           if (editable) return;
-          // Allow native WebKit 'paste' event to fire for zero-copy ImageBitmap decoding.
-          // Fall back to A.paste() only if no native paste happened.
-          setTimeout(() => {
-            A.paste();
-          }, 60);
+          e.preventDefault();
+          void A.paste();
         } else if (key === "z" && e.shiftKey) {
           e.preventDefault();
           A.redo();

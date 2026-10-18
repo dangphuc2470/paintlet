@@ -486,19 +486,19 @@ export function CanvasStage() {
     };
 
     window.addEventListener("pointermove", onGlobalPointerMove, { passive: true });
-    el.addEventListener("wheel", onWheel, { passive: false });
+    window.addEventListener("wheel", onWheel, { passive: false });
     el.addEventListener("scroll", onScroll, { passive: true });
-    el.addEventListener("gesturestart", onGestureStart);
-    el.addEventListener("gesturechange", onGestureChange);
-    el.addEventListener("gestureend", onGestureEnd);
+    window.addEventListener("gesturestart", onGestureStart);
+    window.addEventListener("gesturechange", onGestureChange);
+    window.addEventListener("gestureend", onGestureEnd);
     return () => {
       viewport.el = null;
       window.removeEventListener("pointermove", onGlobalPointerMove);
-      el.removeEventListener("wheel", onWheel);
+      window.removeEventListener("wheel", onWheel);
       el.removeEventListener("scroll", onScroll);
-      el.removeEventListener("gesturestart", onGestureStart);
-      el.removeEventListener("gesturechange", onGestureChange);
-      el.removeEventListener("gestureend", onGestureEnd);
+      window.removeEventListener("gesturestart", onGestureStart);
+      window.removeEventListener("gesturechange", onGestureChange);
+      window.removeEventListener("gestureend", onGestureEnd);
     };
   }, []);
 

@@ -76,26 +76,10 @@ export async function pasteClipboard(): Promise<void> {
   const now = Date.now();
   if (now - lastPasteTimestamp < 150) return;
 
-  // 1. Fast in-process Web standard navigator.clipboard (WebKit native pasteboard)
-  if (typeof navigator !== "undefined" && navigator.clipboard?.read) {
-    try {
-      const items = await navigator.clipboard.read();
-      for (const item of items) {
-        const imageType = item.types.find((t) => t.startsWith("image/"));
-        if (imageType) {
-          const blob = await item.getType(imageType);
-          const ok = await pasteImageBlob(blob);
-          if (ok) return;
-        }
-      }
-    } catch {
-      // Permission denied or format unavailable; proceed to fallback
-    }
-  }
-
   let img: ImageData | null = null;
 
-  // 2. Tauri native clipboard manager plugin (Rust IPC fallback)
+  // 1. Tauri native clipboard manager plugin (Rust IPC)
+  // Accesses macOS NSPasteboard directly without WebKit's security popup.
   try {
     const tImg = await readImage();
     if (tImg) {
@@ -122,7 +106,25 @@ export async function pasteClipboard(): Promise<void> {
       }
     }
   } catch (err) {
-    console.warn("Tauri readImage failed:", err);
+    // Only warn if running in desktop environment
+    console.debug("Tauri readImage unavailable:", err);
+  }
+
+  // 2. Web standard navigator.clipboard (only for pure web browser fallback)
+  if (!img && typeof navigator !== "undefined" && navigator.clipboard?.read) {
+    try {
+      const items = await navigator.clipboard.read();
+      for (const item of items) {
+        const imageType = item.types.find((t) => t.startsWith("image/"));
+        if (imageType) {
+          const blob = await item.getType(imageType);
+          const ok = await pasteImageBlob(blob);
+          if (ok) return;
+        }
+      }
+    } catch {
+      // Permission denied or format unavailable; proceed to fallback
+    }
   }
 
   // 3. Fallback: in-app internal copy buffer

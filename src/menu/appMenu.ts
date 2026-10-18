@@ -22,6 +22,7 @@ const ACTIONS: Record<string, () => void> = {
   paste: A.paste,
   delete: A.deleteSelection,
   "select-all": A.selectAll,
+  "transparent-selection": A.toggleTransparentSelection,
   resize: A.openResizeDialog,
   crop: A.crop,
   "flip-h": A.flipHorizontal,

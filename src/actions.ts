@@ -143,6 +143,9 @@ export function deleteSelection(): void {
   if (editableFocused()) return;
   engine.deleteSelection(usePaintStore.getState().color2);
 }
+export function toggleTransparentSelection(): void {
+  usePaintStore.getState().toggleTransparentSelection();
+}
 // Move the selection by whole pixels from the keyboard. Mirrors what a drag
 // does: lift the pixels into a float on the first press (leaving a
 // background-colored hole), then reposition it. The history step is recorded

@@ -71,6 +71,13 @@ export class CanvasEngine {
   // hole a lifted selection leaves and, as the transparent-selection key, to
   // knock out matching pixels when a float is stamped down.
   private bgColor = "#ffffff";
+  private transparentSelection = false;
+
+  setTransparentSelection(enabled: boolean): void {
+    if (this.transparentSelection === enabled) return;
+    this.transparentSelection = enabled;
+    if (this.floatCanvas) this.rebuildFloatDisplay();
+  }
 
   // Bind the engine to the three stacked canvas elements the CanvasStage mounts.
   // Called once on mount; programmatic resizes go through the size-changing
@@ -125,7 +132,7 @@ export class CanvasEngine {
   // Rebuild `floatDisplay` from `floatCanvas`, knocking the background color out
   // to transparent (with tolerance so anti-aliased edges don't leave white halos).
   private rebuildFloatDisplay(): void {
-    if (!this.floatCanvas) {
+    if (!this.floatCanvas || !this.transparentSelection) {
       this.floatDisplay = null;
       return;
     }

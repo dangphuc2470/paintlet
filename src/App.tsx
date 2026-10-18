@@ -8,6 +8,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { ask } from "@tauri-apps/plugin-dialog";
+import { pasteImageBlob } from "./io/clipboard";
 import { TitleBar } from "./components/TitleBar";
 import { Toolbar } from "./components/Toolbar";
 import { CanvasStage } from "./components/CanvasStage";
@@ -106,6 +107,37 @@ function App() {
   // which starts with no data-theme of its own.
   useEffect(() => applyTheme(theme), [theme]);
 
+  // Native clipboard paste event: handles image pasted from macOS WebKit clipboard
+  // directly without depending solely on Tauri IPC or synthetic events.
+  useEffect(() => {
+    const onPaste = (e: ClipboardEvent) => {
+      const el = document.activeElement as HTMLElement | null;
+      const editable =
+        !!el &&
+        (el.tagName === "INPUT" ||
+          el.tagName === "TEXTAREA" ||
+          el.isContentEditable);
+      if (editable) return;
+
+      const items = e.clipboardData?.items;
+      if (!items) return;
+
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i];
+        if (item.type.startsWith("image/")) {
+          e.preventDefault();
+          const file = item.getAsFile();
+          if (file) {
+            void pasteImageBlob(file);
+            return;
+          }
+        }
+      }
+    };
+    window.addEventListener("paste", onPaste);
+    return () => window.removeEventListener("paste", onPaste);
+  }, []);
+
   // Keyboard: zoom (⌘+/-/0), ⌘Y redo, delete and nudge the selection, and
   // single-key tool switching. ⌘-combos owned by the native menu (undo, save,
   // clipboard, …) fall through.
@@ -184,7 +216,9 @@ function App() {
     <div className="relative flex h-full flex-col bg-surface text-ink">
       <TitleBar />
       <Toolbar />
-      <CanvasStage />
+      <div className="relative flex flex-1 overflow-hidden">
+        <CanvasStage />
+      </div>
       <StatusBar />
       <ResizeDialog />
       <SettingsDialog />

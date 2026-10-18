@@ -191,6 +191,165 @@ function SelectionDropdown() {
   );
 }
 
+function RotateDropdown() {
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function handlePointerDown(e: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") setOpen(false);
+    }
+    window.addEventListener("mousedown", handlePointerDown);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("mousedown", handlePointerDown);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [open]);
+
+  return (
+    <div ref={containerRef} className="relative">
+      <button
+        type="button"
+        title="Rotate"
+        onClick={() => setOpen((v) => !v)}
+        className={`flex h-[22px] min-w-[36px] items-center justify-between gap-1 rounded px-1.5 text-ink transition-colors hover:bg-hover ${
+          open ? "bg-hover ring-1 ring-hairline" : ""
+        }`}
+      >
+        <Icon name="rotate" size={14} />
+        <Icon name="chevronDown" size={8} />
+      </button>
+
+      {open && (
+        <div
+          className="absolute left-0 top-full z-50 mt-1 w-44 rounded-md border border-hairline bg-surface-raised py-1 shadow-xl text-ink"
+          role="menu"
+        >
+          <button
+            type="button"
+            onClick={() => {
+              A.rotateRight();
+              setOpen(false);
+            }}
+            className="flex w-full items-center gap-2.5 px-3 py-1.5 text-xs text-left transition-colors hover:bg-hover"
+          >
+            <Icon name="rotateRight90" size={16} />
+            <span>Rotate right 90°</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              A.rotateLeft();
+              setOpen(false);
+            }}
+            className="flex w-full items-center gap-2.5 px-3 py-1.5 text-xs text-left transition-colors hover:bg-hover"
+          >
+            <Icon name="rotateLeft90" size={16} />
+            <span>Rotate left 90°</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              A.rotate180();
+              setOpen(false);
+            }}
+            className="flex w-full items-center gap-2.5 px-3 py-1.5 text-xs text-left transition-colors hover:bg-hover"
+          >
+            <Icon name="rotate180" size={16} />
+            <span>Rotate 180°</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setOpen(false);
+            }}
+            className="flex w-full items-center gap-2.5 px-3 py-1.5 text-xs text-left transition-colors hover:bg-hover"
+          >
+            <Icon name="rotateCustom" size={16} />
+            <span>Rotate custom</span>
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function FlipDropdown() {
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function handlePointerDown(e: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") setOpen(false);
+    }
+    window.addEventListener("mousedown", handlePointerDown);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("mousedown", handlePointerDown);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [open]);
+
+  return (
+    <div ref={containerRef} className="relative">
+      <button
+        type="button"
+        title="Flip"
+        onClick={() => setOpen((v) => !v)}
+        className={`flex h-[22px] min-w-[36px] items-center justify-between gap-1 rounded px-1.5 text-ink transition-colors hover:bg-hover ${
+          open ? "bg-hover ring-1 ring-hairline" : ""
+        }`}
+      >
+        <Icon name="flip" size={14} />
+        <Icon name="chevronDown" size={8} />
+      </button>
+
+      {open && (
+        <div
+          className="absolute left-0 top-full z-50 mt-1 w-40 rounded-md border border-hairline bg-surface-raised py-1 shadow-xl text-ink"
+          role="menu"
+        >
+          <button
+            type="button"
+            onClick={() => {
+              A.flipVertical();
+              setOpen(false);
+            }}
+            className="flex w-full items-center gap-2.5 px-3 py-1.5 text-xs text-left transition-colors hover:bg-hover"
+          >
+            <Icon name="flipVertical" size={16} />
+            <span>Flip vertical</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              A.flipHorizontal();
+              setOpen(false);
+            }}
+            className="flex w-full items-center gap-2.5 px-3 py-1.5 text-xs text-left transition-colors hover:bg-hover"
+          >
+            <Icon name="flipHorizontal" size={16} />
+            <span>Flip horizontal</span>
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ContextGroup() {
   const activeToolId = usePaintStore((s) => s.activeToolId);
   if (activeToolId === "text")
@@ -219,37 +378,46 @@ export function Toolbar() {
 
       <Divider />
 
-      {/* 2. Image Group: Crop, Resize, Rotate, Remove Background */}
+      {/* 2. Image Group: Crop, Remove Background, Rotate, Flip, Resize */}
       <Group label="Image">
-        <div className="grid grid-flow-col grid-rows-2 gap-0.5">
-          <ToolButton
-            title="Crop to selection"
-            disabled={!hasSelection}
-            onClick={() => A.crop()}
-          >
-            <Icon name="crop" size={15} />
-          </ToolButton>
-          <ToolButton
-            title="Rotate 90° right"
-            onClick={() => A.rotateRight()}
-          >
-            <Icon name="rotate" size={15} />
-          </ToolButton>
-          <ToolButton
+        <div className="flex items-center gap-1">
+          {/* Column 1: Crop (top), Remove background (bottom) */}
+          <div className="flex flex-col gap-0.5">
+            <button
+              type="button"
+              title="Crop to selection"
+              disabled={!hasSelection}
+              onClick={() => A.crop()}
+              className="flex h-[22px] w-[26px] items-center justify-center rounded text-ink transition-colors hover:bg-hover disabled:opacity-30 disabled:pointer-events-none"
+            >
+              <Icon name="crop" size={14} />
+            </button>
+            <button
+              type="button"
+              title="Remove background"
+              onClick={() => A.toggleTransparentSelection()}
+              className="flex h-[22px] w-[26px] items-center justify-center rounded text-ink transition-colors hover:bg-hover"
+            >
+              <Icon name="removeBackground" size={14} />
+            </button>
+          </div>
+
+          {/* Column 2: Rotate dropdown (top), Flip dropdown (bottom) */}
+          <div className="flex flex-col gap-0.5">
+            <RotateDropdown />
+            <FlipDropdown />
+          </div>
+
+          {/* Column 3: Resize (full-height tile) */}
+          <button
+            type="button"
             title="Resize canvas & image"
             onClick={() => A.openResizeDialog()}
+            className="flex flex-col items-center justify-center rounded p-1 text-ink transition-colors hover:bg-hover active:bg-neutral-500/15"
+            style={{ height: "46px", width: "44px" }}
           >
-            <Icon name="resize" size={15} />
-          </ToolButton>
-          <ToolButton
-            title="Remove background"
-            onClick={() => {
-              // Placeholder notification or basic transparent knockout
-              A.toggleTransparentSelection();
-            }}
-          >
-            <Icon name="removeBackground" size={15} />
-          </ToolButton>
+            <Icon name="resize" size={24} />
+          </button>
         </div>
       </Group>
 

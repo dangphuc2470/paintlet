@@ -28,6 +28,12 @@ export type IconName =
   | "crop"
   | "resize"
   | "rotate"
+  | "rotateRight90"
+  | "rotateLeft90"
+  | "rotate180"
+  | "rotateCustom"
+  | "flip"
+  | "flipVertical"
   | "flipHorizontal"
   | "removeBackground"
   | "brushes"
@@ -157,31 +163,110 @@ const PATHS: Record<IconName, ReactNode> = {
   ),
   resize: (
     <>
-      <rect x="3" y="3" width="18" height="18" rx="2" />
-      <path d="m14 10 7-7" />
-      <path d="M21 7V3h-4" />
-      <path d="m10 14-7 7" />
-      <path d="M3 17v4h4" />
+      {/* Dashed outer bracket corners (top-left & bottom-right) */}
+      <path
+        d="M3 7V4.5A1.5 1.5 0 0 1 4.5 3H7 M10 3h2 M21 17v2.5a1.5 1.5 0 0 1-1.5 1.5H17 M21 13v-2 M14 21h-2"
+        stroke="currentColor"
+        strokeWidth={1.5}
+        strokeLinecap="round"
+      />
+      {/* Picture card (bottom-left) */}
+      <rect
+        x="3"
+        y="9"
+        width="13"
+        height="12"
+        rx="2.5"
+        stroke="var(--vp-accent)"
+        strokeWidth={1.5}
+        fill="none"
+      />
+      {/* Sun dot inside picture */}
+      <circle
+        cx="12.5"
+        cy="12.5"
+        r="1.2"
+        fill="var(--vp-accent)"
+        stroke="none"
+      />
+      {/* Mountain wave inside picture */}
+      <path
+        d="M4.5 18.5c1.8-3 3.8-3.5 5.5-1.5s3 0.5 4.5-1.5"
+        stroke="var(--vp-accent)"
+        strokeWidth={1.5}
+        strokeLinecap="round"
+        fill="none"
+      />
+      {/* Resize expansion arrow (top-right) */}
+      <path
+        d="M15 4h5v5 M20 4l-6 6"
+        stroke="var(--vp-accent)"
+        strokeWidth={1.5}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
     </>
   ),
   rotate: (
     <>
-      <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8" />
-      <path d="M21 3v5h-5" />
+      <path d="M8 5c2-1.5 5-1.5 7 0l2 2" />
+      <polyline points="17 3 17 7 13 7" />
+      <path d="M4 19h16V12z" fill="var(--vp-accent)" stroke="currentColor" strokeWidth={1.5} />
+    </>
+  ),
+  rotateRight90: (
+    <>
+      <path d="M8 5c2-1.5 5-1.5 7 0l2 2" />
+      <polyline points="17 3 17 7 13 7" />
+      <path d="M4 19h16V12z" fill="var(--vp-accent)" stroke="currentColor" strokeWidth={1.5} />
+    </>
+  ),
+  rotateLeft90: (
+    <>
+      <path d="M16 5c-2-1.5-5-1.5-7 0L7 7" />
+      <polyline points="7 3 7 7 11 7" />
+      <path d="M20 19H4V12z" fill="none" stroke="currentColor" strokeWidth={1.5} />
+    </>
+  ),
+  rotate180: (
+    <>
+      <path d="M10 5 4 19h6z" stroke="currentColor" fill="none" strokeWidth={1.5} />
+      <path d="M14 5v14l6-14z" fill="currentColor" stroke="currentColor" strokeWidth={1.5} />
+    </>
+  ),
+  rotateCustom: (
+    <>
+      <circle cx="12" cy="13" r="1.5" fill="currentColor" />
+      <path d="M12 6a7 7 0 1 1-5 2.1" />
+      <polyline points="7 4 7 8.5 11.5 8.5" />
+    </>
+  ),
+  flip: (
+    <>
+      <line x1="3" y1="12" x2="21" y2="12" strokeWidth={1.5} />
+      <path d="M4 12 19 6v6z" fill="none" stroke="currentColor" strokeWidth={1.5} />
+      <path d="M4 12 19 18v-6z" fill="var(--vp-accent)" stroke="currentColor" strokeWidth={1.5} />
+    </>
+  ),
+  flipVertical: (
+    <>
+      <line x1="3" y1="12" x2="21" y2="12" strokeWidth={1.5} />
+      <path d="M4 12 19 6v6z" fill="none" stroke="currentColor" strokeWidth={1.5} />
+      <path d="M4 12 19 18v-6z" fill="currentColor" stroke="currentColor" strokeWidth={1.5} />
     </>
   ),
   flipHorizontal: (
     <>
-      <path d="M12 2v20" />
-      <path d="m18 15 4-4-4-4" />
-      <path d="m6 15-4-4 4-4" />
+      <line x1="12" y1="3" x2="12" y2="21" strokeWidth={1.5} />
+      <path d="M12 4 6 19h6z" fill="currentColor" stroke="currentColor" strokeWidth={1.5} />
+      <path d="M12 4 18 19h-6z" fill="none" stroke="currentColor" strokeWidth={1.5} />
     </>
   ),
   removeBackground: (
     <>
-      <circle cx="12" cy="7" r="4" strokeDasharray="2 2" />
-      <path d="M6 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2" strokeDasharray="2 2" />
-      <path d="m17 10 2 2 4-4" />
+      <path d="M3 7l4-4 M3 13l10-10 M3 19l16-16 M9 21l12-12 M15 21l6-6" stroke="currentColor" strokeWidth={1.2} />
+      <circle cx="12" cy="10" r="3" fill="var(--vp-surface)" stroke="var(--vp-accent)" strokeWidth={1.5} />
+      <path d="M7 19a5 5 0 0 1 10 0" fill="var(--vp-surface)" stroke="var(--vp-accent)" strokeWidth={1.5} />
     </>
   ),
   brushes: (

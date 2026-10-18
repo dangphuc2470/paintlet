@@ -753,6 +753,16 @@ export function CanvasStage() {
     shiftKey: e.shiftKey,
   });
 
+  const isSquareTool = activeToolId === "eraser";
+
+  const activeToolSize =
+    isShapeTool(activeToolId) ||
+    activeToolId === "line" ||
+    activeToolId === "curve"
+      ? shapeSize
+      : brushSize;
+  const previewSizePx = Math.max(2, Math.round(activeToolSize * zoom));
+
   const updatePreviewPos = (clientX: number, clientY: number) => {
     if (!previewRef.current || !overlayRef.current) return;
     const rect = overlayRef.current.getBoundingClientRect();
@@ -762,7 +772,17 @@ export function CanvasStage() {
       previewRef.current.style.display = "none";
       return;
     }
-    previewRef.current.style.transform = `translate3d(${x}px, ${y}px, 0) translate(-50%, -50%)`;
+    if (isSquareTool) {
+      const canvasX = Math.floor(x / zoom);
+      const canvasY = Math.floor(y / zoom);
+      const size = Math.max(1, Math.round(brushSize));
+      const half = Math.floor((size - 1) / 2);
+      const screenX = (canvasX - half) * zoom;
+      const screenY = (canvasY - half) * zoom;
+      previewRef.current.style.transform = `translate3d(${screenX}px, ${screenY}px, 0)`;
+    } else {
+      previewRef.current.style.transform = `translate3d(${x}px, ${y}px, 0) translate(-50%, -50%)`;
+    }
     previewRef.current.style.display = "block";
   };
 
@@ -1006,28 +1026,14 @@ export function CanvasStage() {
               className="pointer-events-none absolute left-0 top-0 z-20 will-change-transform"
               style={{
                 display: "none",
-                width: Math.max(
-                  2,
-                  (isShapeTool(activeToolId) ||
-                  activeToolId === "line" ||
-                  activeToolId === "curve"
-                    ? shapeSize
-                    : brushSize) * zoom,
-                ),
-                height: Math.max(
-                  2,
-                  (isShapeTool(activeToolId) ||
-                  activeToolId === "line" ||
-                  activeToolId === "curve"
-                    ? shapeSize
-                    : brushSize) * zoom,
-                ),
+                width: previewSizePx,
+                height: previewSizePx,
                 backgroundColor:
                   activeToolId === "eraser"
                     ? "rgba(255, 255, 255, 0.9)"
                     : color1,
-                borderRadius: activeToolId === "eraser" ? "2px" : "50%",
-                border: "1px solid rgba(0, 0, 0, 0.8)",
+                borderRadius: isSquareTool ? "0px" : "50%",
+                outline: "1px solid rgba(0, 0, 0, 0.8)",
                 boxShadow: "0 0 0 1px rgba(255, 255, 255, 0.85)",
               }}
             />

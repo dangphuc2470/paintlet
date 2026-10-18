@@ -6,7 +6,6 @@ import { screenToCanvas } from "../engine/coords";
 import { getTool, isShapeTool } from "../tools/registry";
 import { clampZoom } from "../lib/zoom";
 import { rgbToHex } from "../engine/color";
-import { sizedCursor } from "../lib/cursors";
 import { HANDLE_CURSOR, selectionHandles, type HandleId } from "../engine/selectionHandles";
 import type { MouseButton, Point, Rect, TextStyle, ToolId } from "../engine/types";
 import type { PointerInfo, ToolContext } from "../tools/Tool";
@@ -38,6 +37,7 @@ export function CanvasStage() {
   const baseRef = useRef<HTMLCanvasElement>(null);
   const overlayRef = useRef<HTMLCanvasElement>(null);
   const selectionRef = useRef<HTMLCanvasElement>(null);
+  const selectionMarqueeRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const drawing = useRef(false);
@@ -60,6 +60,9 @@ export function CanvasStage() {
     cy: number;
     color: string;
   } | null>(null);
+
+  // Direct DOM ref for zero-latency 120Hz/240Hz preview ring tracking
+  const previewRef = useRef<HTMLDivElement>(null);
 
   // Drag state for repositioning the floating text box before it's committed.
   const textDrag = useRef<{
@@ -123,9 +126,15 @@ export function CanvasStage() {
   const zoom = usePaintStore((s) => s.view.zoom);
   const activeToolId = usePaintStore((s) => s.activeToolId);
   const brushSize = usePaintStore((s) => s.brushSize);
+  const shapeSize = usePaintStore((s) => s.shapeSize);
   const color1 = usePaintStore((s) => s.color1);
   const textStyle = usePaintStore((s) => s.textStyle);
   const hasSelection = usePaintStore((s) => s.hasSelection);
+
+  const canvasResizeAnchor = useRef<{
+    dir: HandleId;
+    oldRect: DOMRect;
+  } | null>(null);
 
   const [textEdit, setTextEdit] = useState<TextEdit | null>(null);
   // Mirror into a ref so the tool-switch effect can read the latest edit
@@ -268,14 +277,45 @@ export function CanvasStage() {
       return;
     }
     let raf = 0;
+    let lastTime = performance.now();
     let offset = 0;
-    const loop = () => {
-      offset = (offset + 0.5) % 8;
-      const s = usePaintStore.getState();
-      // Resize grips only for the rectangular select tool (the lasso just
-      // moves; switch to Select to resize a free-form selection).
-      const showHandles = s.activeToolId === "select";
-      engine.renderSelection(offset, s.view.zoom, showHandles);
+    const loop = (time: number) => {
+      const dt = Math.min(50, time - lastTime);
+      lastTime = time;
+      offset = (offset + dt * 0.008) % 8;
+      engine.renderSelection(offset);
+      if (selectionMarqueeRef.current && engine.selection) {
+        const s = engine.selection;
+        const curZoom = usePaintStore.getState().view.zoom;
+        // left/top, not transform. A transformed box keeps WebKit from
+        // re-resolving the edge grips' top/bottom when only the height changes,
+        // so the midpoint dots stay put while the selection grows up or down.
+        const boxW = Math.max(1, s.w * curZoom);
+        const boxH = Math.max(1, s.h * curZoom);
+        const marquee = selectionMarqueeRef.current;
+        marquee.style.transform = "none";
+        marquee.style.left = `${s.x * curZoom}px`;
+        marquee.style.top = `${s.y * curZoom}px`;
+        marquee.style.width = `${boxW}px`;
+        marquee.style.height = `${boxH}px`;
+        // Percentages (top/left: 50%) are not recomputed when only the height
+        // changes, so the edge-midpoint grips stay where they were. Pin them
+        // in pixels from the live box instead.
+        const half = 3.5;
+        for (const grip of marquee.querySelectorAll<HTMLElement>("[data-grip]")) {
+          const id = grip.dataset.grip;
+          if (id !== "n" && id !== "s" && id !== "e" && id !== "w") continue;
+          grip.style.right = "auto";
+          grip.style.bottom = "auto";
+          grip.style.transform = "none";
+          if (id === "n" || id === "s") grip.style.left = `${boxW / 2 - half}px`;
+          if (id === "w") grip.style.left = `${-half}px`;
+          if (id === "e") grip.style.left = `${boxW - half}px`;
+          if (id === "n") grip.style.top = `${-half}px`;
+          if (id === "s") grip.style.top = `${boxH - half}px`;
+          if (id === "e" || id === "w") grip.style.top = `${boxH / 2 - half}px`;
+        }
+      }
       raf = requestAnimationFrame(loop);
     };
     raf = requestAnimationFrame(loop);
@@ -327,7 +367,17 @@ export function CanvasStage() {
     };
 
     const onWheel = (e: WheelEvent) => {
-      if (!e.ctrlKey && !e.metaKey) return; // plain scroll keeps scrolling
+      lastPointer.current = {
+        clientX: e.clientX,
+        clientY: e.clientY,
+        shiftKey: e.shiftKey,
+        buttons: e.buttons,
+        button: e.button,
+      };
+      if (!e.ctrlKey && !e.metaKey) {
+        updatePreviewPos(e.clientX, e.clientY);
+        return; // plain scroll keeps scrolling
+      }
       e.preventDefault();
       // Normalize the delta: mouse wheels report deltaMode 1 (lines) or big
       // pixel steps (~100/notch); a trackpad pinch reports small pixel deltas.
@@ -351,36 +401,133 @@ export function CanvasStage() {
     const onGestureChange = (e: Event) => {
       e.preventDefault();
       const g = e as Event & { scale: number; clientX: number; clientY: number };
+      lastPointer.current = {
+        clientX: g.clientX,
+        clientY: g.clientY,
+        shiftKey: false,
+        buttons: 0,
+        button: 0,
+      };
       zoomAt(g.clientX, g.clientY, gestureStartZoom * g.scale);
     };
     const onGestureEnd = (e: Event) => e.preventDefault();
 
+    const onScroll = () => {
+      if (lastPointer.current) {
+        updatePreviewPos(lastPointer.current.clientX, lastPointer.current.clientY);
+        processMove();
+      }
+    };
+
+    const onGlobalPointerMove = (e: PointerEvent) => {
+      lastPointer.current = {
+        clientX: e.clientX,
+        clientY: e.clientY,
+        shiftKey: e.shiftKey,
+        buttons: e.buttons,
+        button: e.button,
+      };
+    };
+
+    window.addEventListener("pointermove", onGlobalPointerMove, { passive: true });
     el.addEventListener("wheel", onWheel, { passive: false });
+    el.addEventListener("scroll", onScroll, { passive: true });
     el.addEventListener("gesturestart", onGestureStart);
     el.addEventListener("gesturechange", onGestureChange);
     el.addEventListener("gestureend", onGestureEnd);
     return () => {
       viewport.el = null;
+      window.removeEventListener("pointermove", onGlobalPointerMove);
       el.removeEventListener("wheel", onWheel);
+      el.removeEventListener("scroll", onScroll);
       el.removeEventListener("gesturestart", onGestureStart);
       el.removeEventListener("gesturechange", onGestureChange);
       el.removeEventListener("gestureend", onGestureEnd);
     };
   }, []);
 
-  // After a zoom-at-cursor renders, scroll so the anchored image point is back
-  // under the pointer. Layout effect: must run before the frame paints.
+  const prevZoomRef = useRef(zoom);
+
+  // After a zoom or canvas resize renders, scroll so the anchored point/edge
+  // stays put on screen. Layout effect: must run before the frame paints.
   useLayoutEffect(() => {
-    const a = zoomAnchor.current;
-    if (!a) return;
-    zoomAnchor.current = null;
     const el = containerRef.current;
     const overlay = overlayRef.current;
-    if (!el || !overlay) return;
-    const rect = overlay.getBoundingClientRect();
-    el.scrollLeft += rect.left + a.ix * zoom - a.clientX;
-    el.scrollTop += rect.top + a.iy * zoom - a.clientY;
-  }, [zoom]);
+    const curZoom = zoom;
+    const prevZoom = prevZoomRef.current;
+    prevZoomRef.current = curZoom;
+
+    if (el && overlay) {
+      // 1. Canvas edge resize: pin the opposite edge stationary on screen,
+      // and only scroll if the dragged edge goes out of viewport bounds.
+      const cra = canvasResizeAnchor.current;
+      if (cra) {
+        canvasResizeAnchor.current = null;
+        const newRect = overlay.getBoundingClientRect();
+        const { dir, oldRect } = cra;
+
+        // Pin opposite edge:
+        if (!dir.includes("w")) {
+          // Dragged east/right -> keep west/left edge fixed on screen
+          el.scrollLeft += Math.round(newRect.left - oldRect.left);
+        } else {
+          // Dragged west/left -> keep east/right edge fixed on screen
+          el.scrollLeft += Math.round(newRect.right - oldRect.right);
+        }
+
+        if (!dir.includes("n")) {
+          // Dragged south/down -> keep north/top edge fixed on screen
+          el.scrollTop += Math.round(newRect.top - oldRect.top);
+        } else {
+          // Dragged north/up -> keep south/bottom edge fixed on screen
+          el.scrollTop += Math.round(newRect.bottom - oldRect.bottom);
+        }
+
+        // Reveal the dragged edge if it stretched outside the viewport:
+        const updatedRect = overlay.getBoundingClientRect();
+        const margin = 40;
+        if (dir.includes("e") && updatedRect.right > el.clientWidth - margin) {
+          el.scrollLeft += Math.round(updatedRect.right - (el.clientWidth - margin));
+        } else if (dir.includes("w") && updatedRect.left < margin) {
+          el.scrollLeft += Math.round(updatedRect.left - margin);
+        }
+
+        if (dir.includes("s") && updatedRect.bottom > el.clientHeight - margin) {
+          el.scrollTop += Math.round(updatedRect.bottom - (el.clientHeight - margin));
+        } else if (dir.includes("n") && updatedRect.top < margin) {
+          el.scrollTop += Math.round(updatedRect.top - margin);
+        }
+      }
+
+      // 2. Zoom anchor
+      let a = zoomAnchor.current;
+      if (!a && curZoom !== prevZoom) {
+        // Zoom triggered via keyboard (⌘+/⌘-) or bottom slider:
+        // anchor to the center of the viewport so center of screen stays put.
+        const rect = overlay.getBoundingClientRect();
+        const clientX = el.clientWidth / 2;
+        const clientY = el.clientHeight / 2;
+        a = {
+          clientX,
+          clientY,
+          ix: (clientX - rect.left) / prevZoom,
+          iy: (clientY - rect.top) / prevZoom,
+        };
+      }
+
+      if (a) {
+        zoomAnchor.current = null;
+        const rect = overlay.getBoundingClientRect();
+        el.scrollLeft += rect.left + a.ix * curZoom - a.clientX;
+        el.scrollTop += rect.top + a.iy * curZoom - a.clientY;
+      }
+    }
+
+    if (lastPointer.current) {
+      updatePreviewPos(lastPointer.current.clientX, lastPointer.current.clientY);
+      processMove();
+    }
+  }, [w, h, zoom]);
 
   // Track the spacebar for space-drag panning (ignored while typing in a
   // field). Window blur releases it so a ⌘Tab away can't wedge pan mode on.
@@ -498,26 +645,73 @@ export function CanvasStage() {
     if (!d) return;
     e.stopPropagation();
     const t = resizeTarget(e);
+    const { dir } = d;
     resizeDrag.current = null;
     setResizePreview(null);
     setCanvasResizeCursor(null);
-    if (t.w !== d.startW || t.h !== d.startH || t.x !== 0 || t.y !== 0)
+    if (t.w !== d.startW || t.h !== d.startH || t.x !== 0 || t.y !== 0) {
+      const overlay = overlayRef.current;
+      if (overlay) {
+        canvasResizeAnchor.current = {
+          dir,
+          oldRect: overlay.getBoundingClientRect(),
+        };
+      }
       engine.setCanvasSizeAnchored(t.w, t.h, -t.x, -t.y);
+    }
   };
 
-  // Esc cancels an in-progress stroke/shape (including a multi-click polygon
-  // or curve between gestures, via the tool's own onKeyDown), or deselects a
-  // finished selection.
+  // Keyboard shortcuts: Esc cancels in-progress actions; Arrow keys nudge selections
+  // with acceleration and Windows 11 Shift-trail stamping.
   useEffect(() => {
+    let arrowRepeatCount = 0;
+    let lastArrowKey = "";
+
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Escape") return;
-      // An open dialog owns Esc: DialogFrame closes on it, and cancelling the
-      // stroke or dropping the selection underneath at the same time would
-      // destroy work nobody asked to lose. Read from the DOM rather than store
-      // flags because the Edit Color popup's open state is local to
-      // ColorControls, so there's no flag to check.
       if (document.querySelector('[role="dialog"]')) return;
       const activeId = usePaintStore.getState().activeToolId;
+
+      // Arrow keys move active selection
+      if (
+        (e.key === "ArrowLeft" ||
+          e.key === "ArrowRight" ||
+          e.key === "ArrowUp" ||
+          e.key === "ArrowDown") &&
+        engine.hasSelectionOrFloat()
+      ) {
+        e.preventDefault();
+        e.stopPropagation();
+
+        if (e.key !== lastArrowKey) {
+          arrowRepeatCount = 0;
+          lastArrowKey = e.key;
+        } else {
+          arrowRepeatCount++;
+        }
+
+        // Acceleration curve: 1px -> 2px -> 4px -> 8px when held
+        const step =
+          arrowRepeatCount < 4
+            ? 1
+            : arrowRepeatCount < 12
+              ? 2
+              : arrowRepeatCount < 24
+                ? 4
+                : 8;
+
+        let dx = 0;
+        let dy = 0;
+        if (e.key === "ArrowLeft") dx = -step;
+        if (e.key === "ArrowRight") dx = step;
+        if (e.key === "ArrowUp") dy = -step;
+        if (e.key === "ArrowDown") dy = step;
+
+        const color2 = usePaintStore.getState().color2;
+        engine.nudgeSelection(dx, dy, e.shiftKey, color2);
+        return;
+      }
+
+      if (e.key !== "Escape") return;
       if (drawing.current) {
         drawing.current = false;
         getTool(activeId)?.onDeactivate?.(makeCtx());
@@ -532,8 +726,20 @@ export function CanvasStage() {
         engine.deselect();
       }
     };
+
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (e.key.startsWith("Arrow")) {
+        arrowRepeatCount = 0;
+        lastArrowKey = "";
+      }
+    };
+
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    window.addEventListener("keyup", onKeyUp);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("keyup", onKeyUp);
+    };
     // makeCtx reads live store state, so an empty dep list is correct here.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -547,9 +753,43 @@ export function CanvasStage() {
     shiftKey: e.shiftKey,
   });
 
+  const isSquareTool = activeToolId === "eraser";
+
+  const activeToolSize =
+    isShapeTool(activeToolId) ||
+    activeToolId === "line" ||
+    activeToolId === "curve"
+      ? shapeSize
+      : brushSize;
+  const previewSizePx = Math.max(2, Math.round(activeToolSize * zoom));
+
+  const updatePreviewPos = (clientX: number, clientY: number) => {
+    if (!previewRef.current || !overlayRef.current) return;
+    const rect = overlayRef.current.getBoundingClientRect();
+    const x = clientX - rect.left;
+    const y = clientY - rect.top;
+    if (x < 0 || y < 0 || x > rect.width || y > rect.height) {
+      previewRef.current.style.display = "none";
+      return;
+    }
+    if (isSquareTool) {
+      const canvasX = Math.floor(x / zoom);
+      const canvasY = Math.floor(y / zoom);
+      const size = Math.max(1, Math.round(brushSize));
+      const half = Math.floor((size - 1) / 2);
+      const screenX = (canvasX - half) * zoom;
+      const screenY = (canvasY - half) * zoom;
+      previewRef.current.style.transform = `translate3d(${screenX}px, ${screenY}px, 0)`;
+    } else {
+      previewRef.current.style.transform = `translate3d(${x}px, ${y}px, 0) translate(-50%, -50%)`;
+    }
+    previewRef.current.style.display = "block";
+  };
+
   const onPointerDown = (e: React.PointerEvent) => {
     // Middle button and space-drag belong to panning, never to tools.
     if (e.button === 1 || spaceHeldRef.current) return;
+    updatePreviewPos(e.clientX, e.clientY);
     // Text tool: place/reposition the floating editor instead of stroking.
     if (activeToolId === "text") {
       // Cancel the browser's post-mousedown focus default, which would blur
@@ -620,6 +860,7 @@ export function CanvasStage() {
   };
 
   const scheduleMove = (e: React.PointerEvent) => {
+    updatePreviewPos(e.clientX, e.clientY);
     lastPointer.current = {
       clientX: e.clientX,
       clientY: e.clientY,
@@ -692,16 +933,20 @@ export function CanvasStage() {
     }
   };
 
-  // The brush/eraser cursor tracks the painted size (image px × zoom) so it
-  // reads as coverage, not a fixed dot; every other tool keeps its static
-  // cursor (precise crosshair, etc.).
-  const toolCursor =
-    activeToolId === "brush"
-      ? sizedCursor(brushSize * zoom, "circle")
-      : activeToolId === "eraser"
-        ? sizedCursor(brushSize * zoom, "square")
-        : (getTool(activeToolId)?.cursor ??
-          (activeToolId === "text" ? "text" : "default"));
+  // The brush/pencil/eraser/shape tools hide the OS cursor entirely ("none"),
+  // and render the live solid circular/square preview directly via previewRef with zero latency.
+  const isPreviewTool =
+    activeToolId === "brush" ||
+    activeToolId === "pencil" ||
+    activeToolId === "eraser" ||
+    activeToolId === "line" ||
+    activeToolId === "curve" ||
+    isShapeTool(activeToolId);
+
+  const toolCursor = isPreviewTool
+    ? "none"
+    : (getTool(activeToolId)?.cursor ??
+      (activeToolId === "text" ? "text" : "default"));
   const cursor = panning
     ? "grabbing"
     : canvasResizeCursor
@@ -710,6 +955,19 @@ export function CanvasStage() {
         ? "grab"
         : (handleCursor ?? toolCursor);
   const cssSize = { width: w * zoom, height: h * zoom };
+  const isZoomed = zoom > 1;
+
+  const stagePaddingStyle = isZoomed
+    ? {
+        paddingLeft: "max(140px, 45vw)",
+        paddingRight: "max(140px, 45vw)",
+        paddingTop: "max(60px, 35vh)",
+        paddingBottom: "max(60px, 35vh)",
+      }
+    : {
+        padding: "40px",
+      };
+
   const box = textEdit ? measureBox(textEdit.value, textStyle) : null;
   const lineHeightPx = Math.round(textStyle.fontSize * LINE_HEIGHT) * zoom;
 
@@ -728,9 +986,12 @@ export function CanvasStage() {
       onPointerUpCapture={onPanPointerEnd}
       onPointerCancelCapture={onPanPointerEnd}
     >
-      <div className="flex min-h-full min-w-full items-center justify-center p-10">
+      <div
+        className="flex min-h-full min-w-full w-fit h-fit"
+        style={stagePaddingStyle}
+      >
         {/* The "paper": drop shadow + hairline ring around the document. */}
-        <div className="relative shadow-lg ring-1 ring-black/10" style={cssSize}>
+        <div className="relative m-auto shadow-2xl ring-1 ring-black/20 bg-white shrink-0" style={cssSize}>
           <canvas
             ref={baseRef}
             className="absolute left-0 top-0 bg-white"
@@ -745,6 +1006,7 @@ export function CanvasStage() {
             onPointerUp={endStroke}
             onPointerCancel={endStroke}
             onPointerLeave={() => {
+              if (previewRef.current) previewRef.current.style.display = "none";
               if (drawing.current) return;
               if (moveRaf.current) {
                 cancelAnimationFrame(moveRaf.current);
@@ -754,7 +1016,26 @@ export function CanvasStage() {
               setDropper(null);
             }}
           />
-          {/* Selection layer: marquee + floating content. Pointer-transparent so
+          {/* Live canvas hover solid preview circle/rect matching Windows 11 Paint (Zero-latency hardware transform) */}
+          {isPreviewTool && !panning && !spaceHeld && !handleCursor && (
+            <div
+              ref={previewRef}
+              className="pointer-events-none absolute left-0 top-0 z-20 will-change-transform"
+              style={{
+                display: "none",
+                width: previewSizePx,
+                height: previewSizePx,
+                backgroundColor:
+                  activeToolId === "eraser"
+                    ? "rgba(255, 255, 255, 0.9)"
+                    : color1,
+                borderRadius: isSquareTool ? "0px" : "50%",
+                outline: "1px solid rgba(0, 0, 0, 0.8)",
+                boxShadow: "0 0 0 1px rgba(255, 255, 255, 0.85)",
+              }}
+            />
+          )}
+          {/* Selection layer: floating content (pixels). Pointer-transparent so
               the overlay below keeps receiving pointer events. */}
           <canvas
             ref={selectionRef}
@@ -762,26 +1043,88 @@ export function CanvasStage() {
             style={{ ...cssSize, imageRendering: "pixelated" }}
           />
 
+          {/* Selection Marquee & 8 resize handles overlay: vector crisp, 1px lines, fixed 7px handles */}
+          {hasSelection && engine.selection && !engine.hasLassoOutline() && (
+            <div
+              ref={selectionMarqueeRef}
+              className="pointer-events-none absolute z-20"
+              style={{
+                left: engine.selection.x * zoom,
+                top: engine.selection.y * zoom,
+                width: Math.max(1, engine.selection.w * zoom),
+                height: Math.max(1, engine.selection.h * zoom),
+              }}
+            >
+              <svg className="w-full h-full overflow-visible pointer-events-none absolute inset-0">
+                <rect
+                  x="0.5"
+                  y="0.5"
+                  width="100%"
+                  height="100%"
+                  fill="none"
+                  stroke="#ffffff"
+                  strokeWidth="1"
+                  className="marching-ants-white"
+                />
+                <rect
+                  x="0.5"
+                  y="0.5"
+                  width="100%"
+                  height="100%"
+                  fill="none"
+                  stroke="#000000"
+                  strokeWidth="1"
+                  className="marching-ants-black"
+                />
+              </svg>
+
+              {/* 8 selection resize grips (Rectangular select tool) */}
+              {activeToolId === "select" && (
+                <>
+                  {(
+                    [
+                      ["nw", { left: -3.5, top: -3.5 }],
+                      ["n", { top: -3.5, left: -3.5 }],
+                      ["ne", { right: -3.5, top: -3.5 }],
+                      ["e", { right: -3.5, top: -3.5 }],
+                      ["se", { right: -3.5, bottom: -3.5 }],
+                      ["s", { bottom: -3.5, left: -3.5 }],
+                      ["sw", { left: -3.5, bottom: -3.5 }],
+                      ["w", { left: -3.5, top: -3.5 }],
+                    ] as const
+                  ).map(([id, pos]) => (
+                    <div
+                      key={id}
+                      data-grip={id}
+                      className="absolute z-20 h-[7px] w-[7px] border border-black bg-white shadow-xs"
+                      style={pos}
+                    />
+                  ))}
+                </>
+              )}
+            </div>
+          )}
+
           {/* Canvas resize handles on every corner and edge midpoint: drag to
               crop or extend the canvas. Each grip's compass id drives both its
               cursor and which edge(s) it moves. */}
           {(
             [
-              ["nw", { left: -6, top: -6 }],
-              ["n", { top: -6, left: "50%", marginLeft: -5 }],
-              ["ne", { right: -6, top: -6 }],
-              ["e", { right: -6, top: "50%", marginTop: -5 }],
-              ["se", { right: -6, bottom: -6 }],
-              ["s", { bottom: -6, left: "50%", marginLeft: -5 }],
-              ["sw", { left: -6, bottom: -6 }],
-              ["w", { left: -6, top: "50%", marginTop: -5 }],
+              ["nw", { left: -5, top: -5 }],
+              ["n", { top: -5, left: "50%", transform: "translateX(-50%)" }],
+              ["ne", { right: -5, top: -5 }],
+              ["e", { right: -5, top: "50%", transform: "translateY(-50%)" }],
+              ["se", { right: -5, bottom: -5 }],
+              ["s", { bottom: -5, left: "50%", transform: "translateX(-50%)" }],
+              ["sw", { left: -5, bottom: -5 }],
+              ["w", { left: -5, top: "50%", transform: "translateY(-50%)" }],
             ] as const
           ).map(([dir, pos]) => (
             <div
               key={dir}
               data-dir={dir}
               title="Drag to resize the canvas"
-              className="absolute z-10 h-2.5 w-2.5 rounded-[2px] border border-neutral-400 bg-white shadow-sm"
+              className="absolute z-30 h-2.5 w-2.5 rounded-[1px] border border-neutral-500 bg-white shadow-md"
               style={{ ...pos, cursor: HANDLE_CURSOR[dir] }}
               onPointerDown={onHandleDown(dir)}
               onPointerMove={onHandleMove}

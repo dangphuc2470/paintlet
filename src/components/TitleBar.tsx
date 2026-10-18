@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { usePaintStore } from "../state/store";
+import { engine, usePaintStore } from "../state/store";
 import { Logo } from "./Logo";
 import { Icon } from "./Icon";
 import * as A from "../actions";
@@ -54,8 +54,22 @@ export function TitleBar() {
         </button>
         <button
           type="button"
-          title="Copy image to clipboard / Share"
-          onClick={() => A.copy()}
+          title="Share"
+          onClick={async () => {
+            if (typeof navigator !== "undefined" && navigator.share) {
+              try {
+                const blob = await engine.toBlob("image/png");
+                const file = new File([blob], "paint.png", { type: "image/png" });
+                if (navigator.canShare && navigator.canShare({ files: [file] })) {
+                  await navigator.share({ files: [file], title: "Paint" });
+                  return;
+                }
+              } catch {
+                /* Share cancelled or not supported, fallback to copy */
+              }
+            }
+            A.copy();
+          }}
           className="flex h-6 w-6 items-center justify-center rounded hover:bg-neutral-500/15 active:bg-neutral-500/25 text-ink transition-colors"
         >
           <Icon name="share" size={13} />

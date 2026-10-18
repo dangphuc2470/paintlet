@@ -44,6 +44,15 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
+    "fileAssociations": [
+      {
+        "ext": ["png", "jpg", "jpeg", "bmp", "gif", "webp", "heic", "tiff", "ico", "svg"],
+        "name": "Image File",
+        "description": "Image File",
+        "role": "Editor",
+        "mimeType": "image/*"
+      }
+    ],
     "macOS": {
       "minimumSystemVersion": "10.15"
     }

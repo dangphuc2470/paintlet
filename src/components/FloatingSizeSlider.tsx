@@ -15,20 +15,22 @@ export function FloatingSizeSlider() {
   const [hoveredSlider, setHoveredSlider] = useState<"size" | "opacity" | null>(null);
   const [draggingSlider, setDraggingSlider] = useState<"size" | "opacity" | null>(null);
 
-  // Responsive layout: next-to (side by side) when wide, top-bottom (stacked) when narrow
-  const [isWide, setIsWide] = useState(
-    typeof window !== "undefined" ? window.innerWidth >= 1050 : true,
+  // Responsive layout based on vertical room:
+  // If enough vertical space (height >= 650px): stack vertically (flex-col) to stay compact horizontally.
+  // If not enough vertical space (height < 650px): place side-by-side (flex-row).
+  const [hasVerticalSpace, setHasVerticalSpace] = useState(
+    typeof window !== "undefined" ? window.innerHeight >= 650 : true,
   );
 
   React.useEffect(() => {
     const handleResize = () => {
-      setIsWide(window.innerWidth >= 1050);
+      setHasVerticalSpace(window.innerHeight >= 650);
     };
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
-  const sliderHeight = isWide ? "190px" : "110px";
+  const sliderHeight = hasVerticalSpace ? "120px" : "180px";
 
   const isShape =
     activeToolId === "line" ||
@@ -67,13 +69,13 @@ export function FloatingSizeSlider() {
   return (
     <div
       className={`absolute left-4 top-1/2 -translate-y-1/2 z-30 flex ${
-        isWide ? "flex-row" : "flex-col"
+        hasVerticalSpace ? "flex-col" : "flex-row"
       } items-center gap-2 select-none pointer-events-auto transition-all`}
     >
       {/* 1. Size Slider Pill */}
       <div
         className={`relative flex flex-col items-center rounded-full bg-surface/90 ${
-          isWide ? "py-3" : "py-2"
+          hasVerticalSpace ? "py-2" : "py-3"
         } px-1.5 shadow-lg backdrop-blur-md border border-hairline/60 transition-all`}
         onMouseEnter={() => setHoveredSlider("size")}
         onMouseLeave={() => setHoveredSlider((curr) => (curr === "size" ? null : curr))}
@@ -129,7 +131,7 @@ export function FloatingSizeSlider() {
       {/* 2. Opacity Slider Pill (Windows 11 Paint style) */}
       <div
         className={`relative flex flex-col items-center rounded-full bg-surface/90 ${
-          isWide ? "py-3" : "py-2"
+          hasVerticalSpace ? "py-2" : "py-3"
         } px-1.5 shadow-lg backdrop-blur-md border border-hairline/60 transition-all`}
         onMouseEnter={() => setHoveredSlider("opacity")}
         onMouseLeave={() => setHoveredSlider((curr) => (curr === "opacity" ? null : curr))}

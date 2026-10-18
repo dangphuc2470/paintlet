@@ -89,7 +89,7 @@ export class SelectTool implements Tool {
   private hitHandle(p: Point, ctx: ToolContext): HandleId | null {
     const r = ctx.engine.selection;
     if (!r) return null;
-    const tol = 6 / ctx.zoom;
+    const tol = 8 / ctx.zoom;
     for (const h of selectionHandles(r)) {
       if (Math.abs(p.x - h.x) <= tol && Math.abs(p.y - h.y) <= tol) return h.id;
     }

@@ -13,7 +13,7 @@ import type { PointerInfo, ToolContext } from "../tools/Tool";
 // The resize-grip cursor under a point on a selection, or null. Mirrors
 // SelectTool.hitHandle so the pointer telegraphs a grab before the drag.
 function handleCursorAt(p: Point, r: Rect, zoom: number): string | null {
-  const tol = 6 / zoom;
+  const tol = 8 / zoom;
   for (const h of selectionHandles(r)) {
     if (Math.abs(p.x - h.x) <= tol && Math.abs(p.y - h.y) <= tol)
       return HANDLE_CURSOR[h.id];
@@ -1007,10 +1007,20 @@ export function CanvasStage() {
       onPointerMoveCapture={onPanPointerMove}
       onPointerUpCapture={onPanPointerEnd}
       onPointerCancelCapture={onPanPointerEnd}
+      onPointerDown={(e) => {
+        if (e.target === containerRef.current && engine.hasSelectionOrFloat()) {
+          engine.deselect();
+        }
+      }}
     >
       <div
         className="flex min-h-full min-w-full w-fit h-fit"
         style={stagePaddingStyle}
+        onPointerDown={(e) => {
+          if (e.target === e.currentTarget && engine.hasSelectionOrFloat()) {
+            engine.deselect();
+          }
+        }}
       >
         {/* The "paper": drop shadow + hairline ring around the document. */}
         <div className="relative m-auto shadow-2xl ring-1 ring-black/20 bg-white shrink-0" style={cssSize}>
@@ -1129,32 +1139,32 @@ export function CanvasStage() {
           )}
 
           {/* Canvas resize handles on every corner and edge midpoint: drag to
-              crop or extend the canvas. Each grip's compass id drives both its
-              cursor and which edge(s) it moves. */}
-          {(
-            [
-              ["nw", { left: -5, top: -5 }],
-              ["n", { top: -5, left: "50%", transform: "translateX(-50%)" }],
-              ["ne", { right: -5, top: -5 }],
-              ["e", { right: -5, top: "50%", transform: "translateY(-50%)" }],
-              ["se", { right: -5, bottom: -5 }],
-              ["s", { bottom: -5, left: "50%", transform: "translateX(-50%)" }],
-              ["sw", { left: -5, bottom: -5 }],
-              ["w", { left: -5, top: "50%", transform: "translateY(-50%)" }],
-            ] as const
-          ).map(([dir, pos]) => (
-            <div
-              key={dir}
-              data-dir={dir}
-              title="Drag to resize the canvas"
-              className="absolute z-30 h-2.5 w-2.5 rounded-[1px] border border-neutral-500 bg-white shadow-md"
-              style={{ ...pos, cursor: HANDLE_CURSOR[dir] }}
-              onPointerDown={onHandleDown(dir)}
-              onPointerMove={onHandleMove}
-              onPointerUp={onHandleUp}
-              onPointerCancel={onHandleUp}
-            />
-          ))}
+              crop or extend the canvas. Hidden when selection is active so selection grips take priority. */}
+          {!hasSelection &&
+            (
+              [
+                ["nw", { left: -5, top: -5 }],
+                ["n", { top: -5, left: "50%", transform: "translateX(-50%)" }],
+                ["ne", { right: -5, top: -5 }],
+                ["e", { right: -5, top: "50%", transform: "translateY(-50%)" }],
+                ["se", { right: -5, bottom: -5 }],
+                ["s", { bottom: -5, left: "50%", transform: "translateX(-50%)" }],
+                ["sw", { left: -5, bottom: -5 }],
+                ["w", { left: -5, top: "50%", transform: "translateY(-50%)" }],
+              ] as const
+            ).map(([dir, pos]) => (
+              <div
+                key={dir}
+                data-dir={dir}
+                title="Drag to resize the canvas"
+                className="absolute z-30 h-2.5 w-2.5 rounded-[1px] border border-neutral-500 bg-white shadow-md"
+                style={{ ...pos, cursor: HANDLE_CURSOR[dir] }}
+                onPointerDown={onHandleDown(dir)}
+                onPointerMove={onHandleMove}
+                onPointerUp={onHandleUp}
+                onPointerCancel={onHandleUp}
+              />
+            ))}
 
           {/* Dashed preview + size badge while a resize handle drags. The rect
               may start above/left of the paper when a top/left handle grows it. */}

@@ -21,6 +21,33 @@ function handleCursorAt(p: Point, r: Rect, zoom: number): string | null {
   return null;
 }
 
+// Pixel offsets (top-left) for the eight grips around a box of the given
+// on-screen size. Explicit pixels instead of percentages: WebKit does not
+// re-resolve percentage offsets of absolute children when only the parent's
+// height changes, which left the bottom/edge grips stuck at the old height.
+function gripPositions(
+  boxW: number,
+  boxH: number,
+  half: number,
+): [HandleId, { left: number; top: number }][] {
+  const l = -half;
+  const cx = boxW / 2 - half;
+  const r = boxW - half;
+  const t = -half;
+  const cy = boxH / 2 - half;
+  const b = boxH - half;
+  return [
+    ["nw", { left: l, top: t }],
+    ["n", { left: cx, top: t }],
+    ["ne", { left: r, top: t }],
+    ["e", { left: r, top: cy }],
+    ["se", { left: r, top: b }],
+    ["s", { left: cx, top: b }],
+    ["sw", { left: l, top: b }],
+    ["w", { left: l, top: cy }],
+  ];
+}
+
 // Multi-line spacing factor for the text tool (matches the editor and raster).
 const LINE_HEIGHT = 1.2;
 
@@ -1133,17 +1160,10 @@ export function CanvasStage() {
               {/* 8 selection resize grips (Rectangular select tool) */}
               {activeToolId === "select" && (
                 <>
-                  {(
-                    [
-                      ["nw", { left: -3.5, top: -3.5 }],
-                      ["n", { top: -3.5, left: "calc(50% - 3.5px)" }],
-                      ["ne", { left: "calc(100% - 3.5px)", top: -3.5 }],
-                      ["e", { left: "calc(100% - 3.5px)", top: "calc(50% - 3.5px)" }],
-                      ["se", { left: "calc(100% - 3.5px)", top: "calc(100% - 3.5px)" }],
-                      ["s", { top: "calc(100% - 3.5px)", left: "calc(50% - 3.5px)" }],
-                      ["sw", { left: -3.5, top: "calc(100% - 3.5px)" }],
-                      ["w", { left: -3.5, top: "calc(50% - 3.5px)" }],
-                    ] as const
+                  {gripPositions(
+                    Math.max(1, (selectionSize?.w ?? engine.selection.w) * zoom),
+                    Math.max(1, (selectionSize?.h ?? engine.selection.h) * zoom),
+                    3.5,
                   ).map(([id, pos]) => (
                     <div
                       key={id}
@@ -1160,18 +1180,7 @@ export function CanvasStage() {
           {/* Canvas resize handles on every corner and edge midpoint: drag to
               crop or extend the canvas. Hidden when selection is active so selection grips take priority. */}
           {!hasSelection &&
-            (
-              [
-                ["nw", { left: -5, top: -5 }],
-                ["n", { top: -5, left: "calc(50% - 5px)" }],
-                ["ne", { left: "calc(100% - 5px)", top: -5 }],
-                ["e", { left: "calc(100% - 5px)", top: "calc(50% - 5px)" }],
-                ["se", { left: "calc(100% - 5px)", top: "calc(100% - 5px)" }],
-                ["s", { top: "calc(100% - 5px)", left: "calc(50% - 5px)" }],
-                ["sw", { left: -5, top: "calc(100% - 5px)" }],
-                ["w", { left: -5, top: "calc(50% - 5px)" }],
-              ] as const
-            ).map(([dir, pos]) => (
+            gripPositions(cssSize.width, cssSize.height, 5).map(([dir, pos]) => (
               <div
                 key={dir}
                 data-dir={dir}

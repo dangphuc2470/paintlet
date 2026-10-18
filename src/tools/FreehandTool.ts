@@ -1,4 +1,5 @@
 import type { Point, ToolId } from "../engine/types";
+import { constrainTo45, roundPoint } from "./shapes";
 import type { PointerInfo, Tool, ToolContext } from "./Tool";
 
 function hardenRect(
@@ -54,6 +55,28 @@ export abstract class FreehandTool implements Tool {
   private drawing = false;
   private last: Point | null = null;
   private color = "#000000";
+  private shiftAnchor: Point | null = null;
+  private snapshotCanvas: HTMLCanvasElement | null = null;
+
+  private takeSnapshot(o: CanvasRenderingContext2D): void {
+    if (!this.snapshotCanvas) {
+      this.snapshotCanvas = document.createElement("canvas");
+    }
+    this.snapshotCanvas.width = o.canvas.width;
+    this.snapshotCanvas.height = o.canvas.height;
+    const snapCtx = this.snapshotCanvas.getContext("2d");
+    if (snapCtx) {
+      snapCtx.clearRect(0, 0, this.snapshotCanvas.width, this.snapshotCanvas.height);
+      snapCtx.drawImage(o.canvas, 0, 0);
+    }
+  }
+
+  private restoreSnapshot(o: CanvasRenderingContext2D): void {
+    o.clearRect(0, 0, o.canvas.width, o.canvas.height);
+    if (this.snapshotCanvas) {
+      o.drawImage(this.snapshotCanvas, 0, 0);
+    }
+  }
 
   onPointerDown(p: PointerInfo, ctx: ToolContext): void {
     this.drawing = true;
@@ -97,18 +120,48 @@ export abstract class FreehandTool implements Tool {
       }
     }
     o.restore();
+
+    if (p.shiftKey) {
+      this.shiftAnchor = p.point;
+      this.takeSnapshot(o);
+    } else {
+      this.shiftAnchor = null;
+      this.snapshotCanvas = null;
+    }
   }
 
   onPointerMove(p: PointerInfo, ctx: ToolContext): void {
     if (!this.drawing || !this.last) return;
-    this.segment(this.last, p.point, ctx);
-    this.last = p.point;
+    if (p.shiftKey) {
+      if (!this.shiftAnchor) {
+        this.shiftAnchor = this.last;
+        this.takeSnapshot(ctx.overlay);
+      }
+      const target = roundPoint(constrainTo45(this.shiftAnchor, p.point));
+      this.restoreSnapshot(ctx.overlay);
+      this.segment(this.shiftAnchor, target, ctx);
+      this.last = target;
+    } else {
+      if (this.shiftAnchor) {
+        this.shiftAnchor = null;
+        this.snapshotCanvas = null;
+      }
+      this.segment(this.last, p.point, ctx);
+      this.last = p.point;
+    }
   }
 
-  onPointerUp(_p: PointerInfo, ctx: ToolContext): void {
+  onPointerUp(p: PointerInfo, ctx: ToolContext): void {
     if (!this.drawing) return;
+    if (p.shiftKey && this.shiftAnchor) {
+      const target = roundPoint(constrainTo45(this.shiftAnchor, p.point));
+      this.restoreSnapshot(ctx.overlay);
+      this.segment(this.shiftAnchor, target, ctx);
+    }
     this.drawing = false;
     this.last = null;
+    this.shiftAnchor = null;
+    this.snapshotCanvas = null;
     ctx.commit(this.id, this.crisp);
   }
 
@@ -117,6 +170,8 @@ export abstract class FreehandTool implements Tool {
     if (this.drawing) {
       this.drawing = false;
       this.last = null;
+      this.shiftAnchor = null;
+      this.snapshotCanvas = null;
       ctx.clearPreview();
     }
   }

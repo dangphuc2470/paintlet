@@ -1,5 +1,6 @@
 import { brushCursor } from "../lib/cursors";
 import type { Point } from "../engine/types";
+import { constrainTo45 } from "./shapes";
 import { usePaintStore, type BrushType } from "../state/store";
 import type { PointerInfo, Tool, ToolContext } from "./Tool";
 
@@ -23,6 +24,29 @@ export class BrushTool implements Tool {
   private color = "#000000";
   private sprayTimer: ReturnType<typeof setInterval> | null = null;
   private currentContext: ToolContext | null = null;
+  private shiftAnchor: Point | null = null;
+  private pointsBeforeShift: Point[] = [];
+  private snapshotCanvas: HTMLCanvasElement | null = null;
+
+  private takeSnapshot(o: CanvasRenderingContext2D): void {
+    if (!this.snapshotCanvas) {
+      this.snapshotCanvas = document.createElement("canvas");
+    }
+    this.snapshotCanvas.width = o.canvas.width;
+    this.snapshotCanvas.height = o.canvas.height;
+    const snapCtx = this.snapshotCanvas.getContext("2d");
+    if (snapCtx) {
+      snapCtx.clearRect(0, 0, this.snapshotCanvas.width, this.snapshotCanvas.height);
+      snapCtx.drawImage(o.canvas, 0, 0);
+    }
+  }
+
+  private restoreSnapshot(o: CanvasRenderingContext2D): void {
+    o.clearRect(0, 0, o.canvas.width, o.canvas.height);
+    if (this.snapshotCanvas) {
+      o.drawImage(this.snapshotCanvas, 0, 0);
+    }
+  }
 
   onPointerDown(p: PointerInfo, ctx: ToolContext): void {
     this.drawing = true;
@@ -34,7 +58,17 @@ export class BrushTool implements Tool {
     const brushType = usePaintStore.getState().brushType;
     this.drawDab(p.point, ctx, brushType);
 
-    if (brushType === "airbrush") {
+    if (p.shiftKey) {
+      this.shiftAnchor = p.point;
+      this.pointsBeforeShift = [p.point];
+      this.takeSnapshot(ctx.overlay);
+    } else {
+      this.shiftAnchor = null;
+      this.pointsBeforeShift = [];
+      this.snapshotCanvas = null;
+    }
+
+    if (brushType === "airbrush" && !p.shiftKey) {
       this.clearSprayTimer();
       this.sprayTimer = setInterval(() => {
         if (this.drawing && this.last && this.currentContext) {
@@ -47,27 +81,81 @@ export class BrushTool implements Tool {
   onPointerMove(p: PointerInfo, ctx: ToolContext): void {
     if (!this.drawing || !this.last) return;
     this.currentContext = ctx;
-    this.points.push(p.point);
 
     const brushType = usePaintStore.getState().brushType;
-    if (
+    const isContinuous =
       brushType === "watercolor" ||
       brushType === "brush" ||
-      brushType === "marker"
-    ) {
-      // Continuous single-path rendering to eliminate joint overlapping dots/beading
-      this.renderContinuousStroke(ctx, brushType);
+      brushType === "marker";
+
+    if (p.shiftKey) {
+      this.clearSprayTimer();
+      if (!this.shiftAnchor) {
+        this.shiftAnchor = this.last;
+        if (isContinuous) {
+          this.pointsBeforeShift = [...this.points];
+        } else {
+          this.takeSnapshot(ctx.overlay);
+        }
+      }
+      const target = constrainTo45(this.shiftAnchor, p.point);
+      if (isContinuous) {
+        this.points = [...this.pointsBeforeShift, target];
+        this.renderContinuousStroke(ctx, brushType);
+      } else {
+        this.restoreSnapshot(ctx.overlay);
+        this.drawSegment(this.shiftAnchor, target, ctx, brushType);
+      }
+      this.last = target;
     } else {
-      this.drawSegment(this.last, p.point, ctx, brushType);
+      if (this.shiftAnchor) {
+        this.shiftAnchor = null;
+        this.pointsBeforeShift = [];
+        this.snapshotCanvas = null;
+        if (brushType === "airbrush") {
+          this.clearSprayTimer();
+          this.sprayTimer = setInterval(() => {
+            if (this.drawing && this.last && this.currentContext) {
+              this.sprayParticles(this.last, this.currentContext);
+            }
+          }, 35);
+        }
+      }
+      if (isContinuous) {
+        this.points.push(p.point);
+        this.renderContinuousStroke(ctx, brushType);
+      } else {
+        this.drawSegment(this.last, p.point, ctx, brushType);
+      }
+      this.last = p.point;
     }
-    this.last = p.point;
   }
 
-  onPointerUp(_p: PointerInfo, ctx: ToolContext): void {
+  onPointerUp(p: PointerInfo, ctx: ToolContext): void {
     if (!this.drawing) return;
     this.clearSprayTimer();
+    const brushType = usePaintStore.getState().brushType;
+    const isContinuous =
+      brushType === "watercolor" ||
+      brushType === "brush" ||
+      brushType === "marker";
+
+    if (p.shiftKey && this.shiftAnchor) {
+      const target = constrainTo45(this.shiftAnchor, p.point);
+      if (isContinuous) {
+        this.points = [...this.pointsBeforeShift, target];
+        this.renderContinuousStroke(ctx, brushType);
+      } else {
+        this.restoreSnapshot(ctx.overlay);
+        this.drawSegment(this.shiftAnchor, target, ctx, brushType);
+      }
+    }
+
     this.drawing = false;
     this.last = null;
+    this.shiftAnchor = null;
+    this.pointsBeforeShift = [];
+    this.snapshotCanvas = null;
     this.points = [];
     this.currentContext = null;
     ctx.commit(this.id, false);
@@ -78,6 +166,9 @@ export class BrushTool implements Tool {
     if (this.drawing) {
       this.drawing = false;
       this.last = null;
+      this.shiftAnchor = null;
+      this.pointsBeforeShift = [];
+      this.snapshotCanvas = null;
       this.points = [];
       this.currentContext = null;
       ctx.clearPreview();

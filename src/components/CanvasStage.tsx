@@ -725,6 +725,11 @@ export function CanvasStage() {
 
     const onKey = (e: KeyboardEvent) => {
       if (document.querySelector('[role="dialog"]')) return;
+      if (e.key === "Shift" && drawing.current && lastPointer.current) {
+        lastPointer.current.shiftKey = true;
+        processMove();
+        return;
+      }
       const activeId = usePaintStore.getState().activeToolId;
 
       // Arrow keys move active selection
@@ -784,6 +789,11 @@ export function CanvasStage() {
     };
 
     const onKeyUp = (e: KeyboardEvent) => {
+      if (e.key === "Shift" && drawing.current && lastPointer.current) {
+        lastPointer.current.shiftKey = false;
+        processMove();
+        return;
+      }
       if (e.key.startsWith("Arrow")) {
         arrowRepeatCount = 0;
         lastArrowKey = "";

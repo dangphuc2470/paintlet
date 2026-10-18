@@ -131,6 +131,7 @@ export function CanvasStage() {
   const color1 = usePaintStore((s) => s.color1);
   const textStyle = usePaintStore((s) => s.textStyle);
   const hasSelection = usePaintStore((s) => s.hasSelection);
+  const selectionSize = usePaintStore((s) => s.selectionSize);
 
   const canvasResizeAnchor = useRef<{
     dir: HandleId;
@@ -314,16 +315,34 @@ export function CanvasStage() {
         const half = 3.5;
         for (const grip of marquee.querySelectorAll<HTMLElement>("[data-grip]")) {
           const id = grip.dataset.grip;
-          if (id !== "n" && id !== "s" && id !== "e" && id !== "w") continue;
           grip.style.right = "auto";
           grip.style.bottom = "auto";
           grip.style.transform = "none";
-          if (id === "n" || id === "s") grip.style.left = `${boxW / 2 - half}px`;
-          if (id === "w") grip.style.left = `${-half}px`;
-          if (id === "e") grip.style.left = `${boxW - half}px`;
-          if (id === "n") grip.style.top = `${-half}px`;
-          if (id === "s") grip.style.top = `${boxH - half}px`;
-          if (id === "e" || id === "w") grip.style.top = `${boxH / 2 - half}px`;
+          if (id === "nw") {
+            grip.style.left = `${-half}px`;
+            grip.style.top = `${-half}px`;
+          } else if (id === "n") {
+            grip.style.left = `${boxW / 2 - half}px`;
+            grip.style.top = `${-half}px`;
+          } else if (id === "ne") {
+            grip.style.left = `${boxW - half}px`;
+            grip.style.top = `${-half}px`;
+          } else if (id === "e") {
+            grip.style.left = `${boxW - half}px`;
+            grip.style.top = `${boxH / 2 - half}px`;
+          } else if (id === "se") {
+            grip.style.left = `${boxW - half}px`;
+            grip.style.top = `${boxH - half}px`;
+          } else if (id === "s") {
+            grip.style.left = `${boxW / 2 - half}px`;
+            grip.style.top = `${boxH - half}px`;
+          } else if (id === "sw") {
+            grip.style.left = `${-half}px`;
+            grip.style.top = `${boxH - half}px`;
+          } else if (id === "w") {
+            grip.style.left = `${-half}px`;
+            grip.style.top = `${boxH / 2 - half}px`;
+          }
         }
       }
       raf = requestAnimationFrame(loop);
@@ -1084,8 +1103,8 @@ export function CanvasStage() {
               style={{
                 left: engine.selection.x * zoom,
                 top: engine.selection.y * zoom,
-                width: Math.max(1, engine.selection.w * zoom),
-                height: Math.max(1, engine.selection.h * zoom),
+                width: Math.max(1, (selectionSize?.w ?? engine.selection.w) * zoom),
+                height: Math.max(1, (selectionSize?.h ?? engine.selection.h) * zoom),
               }}
             >
               <svg className="w-full h-full overflow-visible pointer-events-none absolute inset-0">
@@ -1117,13 +1136,13 @@ export function CanvasStage() {
                   {(
                     [
                       ["nw", { left: -3.5, top: -3.5 }],
-                      ["n", { top: -3.5, left: "50%", transform: "translateX(-50%)" }],
-                      ["ne", { right: -3.5, top: -3.5 }],
-                      ["e", { right: -3.5, top: "50%", transform: "translateY(-50%)" }],
-                      ["se", { right: -3.5, bottom: -3.5 }],
-                      ["s", { bottom: -3.5, left: "50%", transform: "translateX(-50%)" }],
-                      ["sw", { left: -3.5, bottom: -3.5 }],
-                      ["w", { left: -3.5, top: "50%", transform: "translateY(-50%)" }],
+                      ["n", { top: -3.5, left: "calc(50% - 3.5px)" }],
+                      ["ne", { left: "calc(100% - 3.5px)", top: -3.5 }],
+                      ["e", { left: "calc(100% - 3.5px)", top: "calc(50% - 3.5px)" }],
+                      ["se", { left: "calc(100% - 3.5px)", top: "calc(100% - 3.5px)" }],
+                      ["s", { top: "calc(100% - 3.5px)", left: "calc(50% - 3.5px)" }],
+                      ["sw", { left: -3.5, top: "calc(100% - 3.5px)" }],
+                      ["w", { left: -3.5, top: "calc(50% - 3.5px)" }],
                     ] as const
                   ).map(([id, pos]) => (
                     <div
@@ -1144,13 +1163,13 @@ export function CanvasStage() {
             (
               [
                 ["nw", { left: -5, top: -5 }],
-                ["n", { top: -5, left: "50%", transform: "translateX(-50%)" }],
-                ["ne", { right: -5, top: -5 }],
-                ["e", { right: -5, top: "50%", transform: "translateY(-50%)" }],
-                ["se", { right: -5, bottom: -5 }],
-                ["s", { bottom: -5, left: "50%", transform: "translateX(-50%)" }],
-                ["sw", { left: -5, bottom: -5 }],
-                ["w", { left: -5, top: "50%", transform: "translateY(-50%)" }],
+                ["n", { top: -5, left: "calc(50% - 5px)" }],
+                ["ne", { left: "calc(100% - 5px)", top: -5 }],
+                ["e", { left: "calc(100% - 5px)", top: "calc(50% - 5px)" }],
+                ["se", { left: "calc(100% - 5px)", top: "calc(100% - 5px)" }],
+                ["s", { top: "calc(100% - 5px)", left: "calc(50% - 5px)" }],
+                ["sw", { left: -5, top: "calc(100% - 5px)" }],
+                ["w", { left: -5, top: "calc(50% - 5px)" }],
               ] as const
             ).map(([dir, pos]) => (
               <div

@@ -658,6 +658,7 @@ export class CanvasEngine {
       w: this.selection.w,
       h: this.selection.h,
     };
+    this.renderSelection(0);
   }
 
   // Scale the floating content to a new rect (selection resize-handle drag).
@@ -693,6 +694,7 @@ export class CanvasEngine {
     this.selection = { x: this.floatX, y: this.floatY, w: W, h: H };
     this.selPoly = null;
     this.selPolyClosed = false;
+    this.renderSelection(0);
     this.emit();
   }
 

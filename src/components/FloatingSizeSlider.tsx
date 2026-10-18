@@ -30,7 +30,7 @@ export function FloatingSizeSlider() {
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
-  const sliderHeight = hasVerticalSpace ? "120px" : "180px";
+  const sliderHeight = hasVerticalSpace ? "180px" : "200px";
 
   const isShape =
     activeToolId === "line" ||

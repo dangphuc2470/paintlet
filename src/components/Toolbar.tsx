@@ -1,36 +1,19 @@
 import type { ReactNode } from "react";
-import { engine, usePaintStore } from "../state/store";
+import { usePaintStore } from "../state/store";
 import { isImplemented } from "../tools/registry";
 import type { ToolId } from "../engine/types";
 import { Icon, type IconName } from "./Icon";
 import { ToolButton } from "./ToolButton";
 import { ColorControls } from "./ColorControls";
 import { TextOptions } from "./TextOptions";
-import { selectAll, toggleTransparentSelection } from "../actions";
+import * as A from "../actions";
 
-// `key` is the tool's shortcut letter, present only for the tools Windows Paint
-// gives one (see TOOL_KEYS in App.tsx); the rest are mouse-only there and here.
 type ToolDef = {
   id: ToolId;
   icon: IconName;
   label: string;
   key?: string;
 };
-
-const SELECT_TOOLS: ToolDef[] = [
-  { id: "select", icon: "select", label: "Select", key: "S" },
-  { id: "freeSelect", icon: "lasso", label: "Free-form select" },
-];
-
-// Drawing tools laid out to fill two rows (Win11 Paint's compact Tools group).
-const DRAW_TOOLS: ToolDef[] = [
-  { id: "pencil", icon: "pencil", label: "Pencil", key: "P" },
-  { id: "brush", icon: "brush", label: "Brush" },
-  { id: "fill", icon: "fill", label: "Fill with color", key: "B" },
-  { id: "text", icon: "text", label: "Text", key: "T" },
-  { id: "eraser", icon: "eraser", label: "Eraser", key: "E" },
-  { id: "eyedropper", icon: "eyedropper", label: "Color picker", key: "I" },
-];
 
 const SHAPE_TOOLS: ToolDef[] = [
   { id: "line", icon: "line", label: "Line" },
@@ -41,13 +24,11 @@ const SHAPE_TOOLS: ToolDef[] = [
   { id: "polygon", icon: "polygon", label: "Polygon" },
 ];
 
-// A labeled ribbon group: content on top, a small caption underneath — the
-// Win11 Paint layout the user asked to get closer to.
 function Group({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="flex flex-col items-center gap-1 px-1.5">
       <div className="flex flex-1 items-center">{children}</div>
-      <span className="text-[10px] leading-none text-ink-muted">{label}</span>
+      <span className="text-[10px] leading-none text-ink-muted select-none">{label}</span>
     </div>
   );
 }
@@ -56,38 +37,6 @@ function Divider() {
   return <div className="my-1 w-px self-stretch bg-hairline" />;
 }
 
-// A compact tool block that fills two rows before starting a new column, so a
-// set of tool buttons stays tight instead of sprawling across one long row.
-function ToolGrid({ tools }: { tools: ToolDef[] }) {
-  const activeToolId = usePaintStore((s) => s.activeToolId);
-  const setTool = usePaintStore((s) => s.setTool);
-  return (
-    <div className="grid grid-flow-col grid-rows-2 gap-0.5">
-      {tools.map((t) => {
-        const enabled = isImplemented(t.id);
-        return (
-          <ToolButton
-            key={t.id}
-            title={
-              !enabled
-                ? `${t.label} — coming soon`
-                : t.key
-                  ? `${t.label} (${t.key})`
-                  : t.label
-            }
-            active={activeToolId === t.id}
-            disabled={!enabled}
-            onClick={() => setTool(t.id)}
-          >
-            <Icon name={t.icon} />
-          </ToolButton>
-        );
-      })}
-    </div>
-  );
-}
-
-// The contextual group between Shapes and Colors: text styling for the Text tool only.
 function ContextGroup() {
   const activeToolId = usePaintStore((s) => s.activeToolId);
   if (activeToolId === "text")
@@ -103,38 +52,174 @@ function ContextGroup() {
 }
 
 export function Toolbar() {
-  const canUndo = usePaintStore((s) => s.canUndo);
-  const canRedo = usePaintStore((s) => s.canRedo);
   const activeToolId = usePaintStore((s) => s.activeToolId);
   const setTool = usePaintStore((s) => s.setTool);
+  const hasSelection = usePaintStore((s) => s.hasSelection);
   const transparentSelection = usePaintStore((s) => s.transparentSelection);
 
   return (
-    <div className="flex shrink-0 items-stretch gap-1 border-b border-hairline bg-surface px-2 py-1.5">
-      <Group label="History">
-        <ToolButton title="Undo (⌘Z)" disabled={!canUndo} onClick={() => engine.undo()}>
-          <Icon name="undo" />
-        </ToolButton>
-        <ToolButton title="Redo (⇧⌘Z)" disabled={!canRedo} onClick={() => engine.redo()}>
-          <Icon name="redo" />
-        </ToolButton>
+    <div className="flex shrink-0 items-stretch gap-1 border-b border-hairline bg-surface px-2 py-1.5 select-none">
+      {/* 1. Selection Group */}
+      <Group label="Selection">
+        <div className="flex items-center gap-0.5">
+          <button
+            type="button"
+            title="Rectangle selection (S)"
+            onClick={() => setTool("select")}
+            className={`flex flex-col items-center justify-center rounded px-2 py-1 transition-colors ${
+              activeToolId === "select" || activeToolId === "freeSelect"
+                ? "bg-neutral-500/20 text-accent font-medium shadow-xs"
+                : "text-ink hover:bg-neutral-500/10 active:bg-neutral-500/20"
+            }`}
+            style={{ height: "46px", width: "44px" }}
+          >
+            <Icon name="select" size={20} />
+            <Icon name="chevronDown" size={10} />
+          </button>
+
+          {/* Quick Select Aux Buttons */}
+          <div className="flex flex-col gap-0.5">
+            <ToolButton
+              title="Free-form selection (Lasso)"
+              active={activeToolId === "freeSelect"}
+              onClick={() => setTool("freeSelect")}
+            >
+              <Icon name="lasso" size={14} />
+            </ToolButton>
+            <ToolButton
+              title={
+                transparentSelection
+                  ? "Transparent selection: ON (Color 2 is transparent)"
+                  : "Transparent selection: OFF (Background is opaque)"
+              }
+              active={transparentSelection}
+              onClick={A.toggleTransparentSelection}
+            >
+              <span className="text-[10px] font-bold">Tr</span>
+            </ToolButton>
+          </div>
+        </div>
       </Group>
 
       <Divider />
-      <Group label="Select">
+
+      {/* 2. Image Group: Crop, Resize, Rotate, Remove Background */}
+      <Group label="Image">
         <div className="grid grid-flow-col grid-rows-2 gap-0.5">
-          {SELECT_TOOLS.map((t) => {
+          <ToolButton
+            title="Crop to selection"
+            disabled={!hasSelection}
+            onClick={() => A.crop()}
+          >
+            <Icon name="crop" size={15} />
+          </ToolButton>
+          <ToolButton
+            title="Rotate 90° right"
+            onClick={() => A.rotateRight()}
+          >
+            <Icon name="rotate" size={15} />
+          </ToolButton>
+          <ToolButton
+            title="Resize canvas & image"
+            onClick={() => A.openResizeDialog()}
+          >
+            <Icon name="resize" size={15} />
+          </ToolButton>
+          <ToolButton
+            title="Remove background"
+            onClick={() => {
+              // Placeholder notification or basic transparent knockout
+              A.toggleTransparentSelection();
+            }}
+          >
+            <Icon name="removeBackground" size={15} />
+          </ToolButton>
+        </div>
+      </Group>
+
+      <Divider />
+
+      {/* 3. Tools Group (2 rows x 3 cols: Pencil, Fill, Text | Eraser, Picker, Blank) */}
+      <Group label="Tools">
+        <div className="grid grid-flow-col grid-rows-2 gap-0.5">
+          {/* Row 1, Col 1: Pencil */}
+          <ToolButton
+            title="Pencil (P)"
+            active={activeToolId === "pencil"}
+            onClick={() => setTool("pencil")}
+          >
+            <Icon name="pencil" />
+          </ToolButton>
+          {/* Row 2, Col 1: Eraser */}
+          <ToolButton
+            title="Eraser (E)"
+            active={activeToolId === "eraser"}
+            onClick={() => setTool("eraser")}
+          >
+            <Icon name="eraser" />
+          </ToolButton>
+
+          {/* Row 1, Col 2: Fill bucket */}
+          <ToolButton
+            title="Fill with color (B)"
+            active={activeToolId === "fill"}
+            onClick={() => setTool("fill")}
+          >
+            <Icon name="fill" />
+          </ToolButton>
+          {/* Row 2, Col 2: Eyedropper / Color picker */}
+          <ToolButton
+            title="Color picker (I)"
+            active={activeToolId === "eyedropper"}
+            onClick={() => setTool("eyedropper")}
+          >
+            <Icon name="eyedropper" />
+          </ToolButton>
+
+          {/* Row 1, Col 3: Text */}
+          <ToolButton
+            title="Text (T)"
+            active={activeToolId === "text"}
+            onClick={() => setTool("text")}
+          >
+            <Icon name="text" />
+          </ToolButton>
+          {/* Row 2, Col 3: Blank empty cell (user requested leaving zoom empty) */}
+          <div className="h-7 w-7 pointer-events-none" />
+        </div>
+      </Group>
+
+      <Divider />
+
+      {/* 4. Brushes Group (Standalone single tile with dropdown indicator) */}
+      <Group label="Brushes">
+        <button
+          type="button"
+          title="Brushes"
+          onClick={() => setTool("brush")}
+          className={`flex flex-col items-center justify-center rounded px-2.5 py-1 transition-colors ${
+            activeToolId === "brush"
+              ? "bg-neutral-500/20 text-accent font-medium shadow-xs"
+              : "text-ink hover:bg-neutral-500/10 active:bg-neutral-500/20"
+          }`}
+          style={{ height: "46px", width: "44px" }}
+        >
+          <Icon name="brushes" size={20} />
+          <Icon name="chevronDown" size={10} />
+        </button>
+      </Group>
+
+      <Divider />
+
+      {/* 5. Shapes Group */}
+      <Group label="Shapes">
+        <div className="grid grid-flow-col grid-rows-2 gap-0.5">
+          {SHAPE_TOOLS.map((t) => {
             const enabled = isImplemented(t.id);
             return (
               <ToolButton
                 key={t.id}
-                title={
-                  !enabled
-                    ? `${t.label} — coming soon`
-                    : t.key
-                      ? `${t.label} (${t.key})`
-                      : t.label
-                }
+                title={!enabled ? `${t.label} — coming soon` : t.label}
                 active={activeToolId === t.id}
                 disabled={!enabled}
                 onClick={() => setTool(t.id)}
@@ -143,39 +228,12 @@ export function Toolbar() {
               </ToolButton>
             );
           })}
-          <ToolButton
-            title="Select all (⌘A)"
-            onClick={() => selectAll()}
-          >
-            <Icon name="selectAll" />
-          </ToolButton>
-          <ToolButton
-            title={
-              transparentSelection
-                ? "Transparent selection: ON (Color 2 is transparent)"
-                : "Transparent selection: OFF (Background is opaque)"
-            }
-            active={transparentSelection}
-            onClick={toggleTransparentSelection}
-          >
-            <Icon name="transparentSelection" />
-          </ToolButton>
         </div>
-      </Group>
-
-      <Divider />
-      <Group label="Tools">
-        <ToolGrid tools={DRAW_TOOLS} />
-      </Group>
-
-      <Divider />
-      <Group label="Shapes">
-        <ToolGrid tools={SHAPE_TOOLS} />
       </Group>
 
       <ContextGroup />
 
-      {/* Colors, pushed to the right. */}
+      {/* 6. Colors Group, pushed to the right */}
       <div className="ml-auto flex items-stretch">
         <Divider />
         <Group label="Colors">

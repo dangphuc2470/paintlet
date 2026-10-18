@@ -126,6 +126,7 @@ export function CanvasStage() {
   const zoom = usePaintStore((s) => s.view.zoom);
   const activeToolId = usePaintStore((s) => s.activeToolId);
   const brushSize = usePaintStore((s) => s.brushSize);
+  const brushOpacity = usePaintStore((s) => s.brushOpacity);
   const shapeSize = usePaintStore((s) => s.shapeSize);
   const color1 = usePaintStore((s) => s.color1);
   const textStyle = usePaintStore((s) => s.textStyle);
@@ -172,9 +173,18 @@ export function CanvasStage() {
       color1: s.color1,
       color2: s.color2,
       size,
+      opacity: s.brushOpacity,
       zoom: s.view.zoom,
-      clearPreview: () => engine.clearOverlay(),
-      commit: (label, crisp) => engine.commit(label, crisp),
+      clearPreview: () => {
+        engine.clearOverlay();
+        if (overlayRef.current) overlayRef.current.style.opacity = "1";
+      },
+      commit: (label, crisp) => {
+        const isFreehand = s.activeToolId === "brush" || s.activeToolId === "pencil";
+        const alpha = isFreehand ? Math.max(0.01, Math.min(1, s.brushOpacity / 100)) : 1;
+        engine.commit(label, crisp, alpha);
+        if (overlayRef.current) overlayRef.current.style.opacity = "1";
+      },
       setColor1: (c) => s.setColor1(c),
       setColor2: (c) => s.setColor2(c),
     };
@@ -803,6 +813,12 @@ export function CanvasStage() {
     }
     const tool = getTool(activeToolId);
     if (!tool) return;
+    if (activeToolId === "brush" || activeToolId === "pencil") {
+      const s = usePaintStore.getState();
+      if (overlayRef.current) {
+        overlayRef.current.style.opacity = String(Math.max(0.01, Math.min(1, s.brushOpacity / 100)));
+      }
+    }
     overlayRef.current!.setPointerCapture(e.pointerId);
     drawing.current = true;
     tool.onPointerDown(infoOf(e), makeCtx());
@@ -884,6 +900,9 @@ export function CanvasStage() {
     if (!drawing.current) return;
     flushMove();
     drawing.current = false;
+    if (overlayRef.current) {
+      overlayRef.current.style.opacity = "1";
+    }
     getTool(activeToolId)?.onPointerUp(infoOf(e), makeCtx());
     try {
       overlayRef.current!.releasePointerCapture(e.pointerId);
@@ -965,7 +984,7 @@ export function CanvasStage() {
         paddingBottom: "max(60px, 35vh)",
       }
     : {
-        paddingLeft: "80px",
+        paddingLeft: "115px",
         paddingRight: "80px",
         paddingTop: "40px",
         paddingBottom: "40px",
@@ -1032,6 +1051,7 @@ export function CanvasStage() {
                   activeToolId === "eraser"
                     ? "rgba(255, 255, 255, 0.9)"
                     : color1,
+                opacity: activeToolId === "eraser" ? 1 : brushOpacity / 100,
                 borderRadius: isSquareTool ? "0px" : "50%",
                 outline: "1px solid rgba(0, 0, 0, 0.8)",
                 boxShadow: "0 0 0 1px rgba(255, 255, 255, 0.85)",

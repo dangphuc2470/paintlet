@@ -40,6 +40,7 @@ interface PaintState {
   color1: string; // foreground (primary button)
   color2: string; // background (secondary button)
   brushSize: number; // continuous width for pencil/brush/eraser
+  brushOpacity: number; // 1 to 100 for pencil/brush
   shapeSize: number; // discrete stroke width for shape tools (1/3/5/8)
   textStyle: TextStyle;
   imageSize: { w: number; h: number }; // mirrored from the engine
@@ -65,6 +66,7 @@ interface PaintState {
   setColor2: (c: string) => void;
   swapColors: () => void;
   setBrushSize: (n: number) => void;
+  setBrushOpacity: (n: number) => void;
   setShapeSize: (n: number) => void;
   setTextStyle: (patch: Partial<TextStyle>) => void;
   setZoom: (z: number) => void;
@@ -95,6 +97,7 @@ export const usePaintStore = create<PaintState>((set) => ({
   color1: "#000000",
   color2: "#ffffff",
   brushSize: 4,
+  brushOpacity: 100,
   shapeSize: 3,
   textStyle: {
     fontFamily: "Helvetica",
@@ -137,6 +140,7 @@ export const usePaintStore = create<PaintState>((set) => ({
       return { color1: s.color2, color2: s.color1 };
     }),
   setBrushSize: (n) => set({ brushSize: n }),
+  setBrushOpacity: (n) => set({ brushOpacity: Math.max(1, Math.min(100, Math.round(n))) }),
   setShapeSize: (n) => set({ shapeSize: n }),
   setTextStyle: (patch) =>
     set((s) => ({ textStyle: { ...s.textStyle, ...patch } })),

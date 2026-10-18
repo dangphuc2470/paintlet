@@ -216,9 +216,16 @@ export class CanvasEngine {
   // Every freehand/shape/text action ends here. When `crisp` is set, the
   // overlay's anti-aliased edges are hardened first (see hardenOverlayAlpha) so
   // the result flood-fills cleanly — the pencil and every shape pass crisp.
-  commit(_label: string, crisp = false): void {
-    if (crisp) this.hardenOverlayAlpha();
-    this.base.drawImage(this.overlayCanvas, 0, 0);
+  commit(_label: string, crisp = false, opacity = 1): void {
+    if (crisp && opacity >= 1) this.hardenOverlayAlpha();
+    if (opacity < 1 && opacity > 0) {
+      this.base.save();
+      this.base.globalAlpha = opacity;
+      this.base.drawImage(this.overlayCanvas, 0, 0);
+      this.base.restore();
+    } else {
+      this.base.drawImage(this.overlayCanvas, 0, 0);
+    }
     this.clearOverlay();
     this.history.push(this.readBase());
     this.dirty = true;

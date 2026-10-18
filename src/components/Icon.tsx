@@ -21,9 +21,19 @@ export type IconName =
   | "select"
   | "lasso"
   | "selectAll"
-  | "transparentSelection"
   | "swap"
-  | "close";
+  | "close"
+  | "save"
+  | "share"
+  | "crop"
+  | "resize"
+  | "rotate"
+  | "flipHorizontal"
+  | "removeBackground"
+  | "brushes"
+  | "opacity"
+  | "transparentSelection"
+  | "chevronDown";
 
 const PATHS: Record<IconName, ReactNode> = {
   undo: (
@@ -119,6 +129,73 @@ const PATHS: Record<IconName, ReactNode> = {
     <>
       <path d="M18 6 6 18" />
       <path d="m6 6 12 12" />
+    </>
+  ),
+  save: (
+    <>
+      <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+      <polyline points="17 21 17 13 7 13 7 21" />
+      <polyline points="7 3 7 8 15 8" />
+    </>
+  ),
+  share: (
+    <>
+      <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8" />
+      <polyline points="16 6 12 2 8 6" />
+      <line x1="12" y1="2" x2="12" y2="15" />
+    </>
+  ),
+  crop: (
+    <>
+      <path d="M6 2v14a2 2 0 0 0 2 2h14" />
+      <path d="M18 22V8a2 2 0 0 0-2-2H2" />
+    </>
+  ),
+  resize: (
+    <>
+      <rect x="3" y="3" width="18" height="18" rx="2" />
+      <path d="m14 10 7-7" />
+      <path d="M21 7V3h-4" />
+      <path d="m10 14-7 7" />
+      <path d="M3 17v4h4" />
+    </>
+  ),
+  rotate: (
+    <>
+      <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8" />
+      <path d="M21 3v5h-5" />
+    </>
+  ),
+  flipHorizontal: (
+    <>
+      <path d="M12 2v20" />
+      <path d="m18 15 4-4-4-4" />
+      <path d="m6 15-4-4 4-4" />
+    </>
+  ),
+  removeBackground: (
+    <>
+      <circle cx="12" cy="7" r="4" strokeDasharray="2 2" />
+      <path d="M6 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2" strokeDasharray="2 2" />
+      <path d="m17 10 2 2 4-4" />
+    </>
+  ),
+  brushes: (
+    <>
+      <path d="M14 2v6" />
+      <path d="M10 4v4" />
+      <rect x="5" y="8" width="14" height="13" rx="2" />
+      <path d="M5 13h14" />
+    </>
+  ),
+  opacity: (
+    <>
+      <path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z" />
+    </>
+  ),
+  chevronDown: (
+    <>
+      <path d="m6 9 6 6 6-6" />
     </>
   ),
 };

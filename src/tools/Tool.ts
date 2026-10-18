@@ -12,6 +12,7 @@ export interface ToolContext {
   color1: string; // foreground (primary button)
   color2: string; // background (secondary button)
   size: number; // brush/stroke width in logical px
+  opacity: number; // brush opacity (1-100)
   zoom: number; // current view zoom (screen px per image px)
   clearPreview(): void; // wipe the overlay
   commit(label: string, crisp?: boolean): void; // overlay → base + push history; crisp hardens AA edges

@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useState, useRef, useEffect, type ReactNode } from "react";
 import { usePaintStore } from "../state/store";
 import { isImplemented } from "../tools/registry";
 import type { ToolId } from "../engine/types";
@@ -37,6 +37,160 @@ function Divider() {
   return <div className="my-1 w-px self-stretch bg-hairline" />;
 }
 
+function SelectionDropdown() {
+  const activeToolId = usePaintStore((s) => s.activeToolId);
+  const setTool = usePaintStore((s) => s.setTool);
+  const hasSelection = usePaintStore((s) => s.hasSelection);
+  const transparentSelection = usePaintStore((s) => s.transparentSelection);
+
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  const isSelectionActive = activeToolId === "select" || activeToolId === "freeSelect";
+  const currentIcon: IconName = activeToolId === "freeSelect" ? "lasso" : "select";
+
+  useEffect(() => {
+    if (!open) return;
+    function handlePointerDown(e: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        setOpen(false);
+      }
+    }
+    window.addEventListener("mousedown", handlePointerDown);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("mousedown", handlePointerDown);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [open]);
+
+  return (
+    <div ref={containerRef} className="relative">
+      <button
+        type="button"
+        title="Selection"
+        onClick={() => setOpen((v) => !v)}
+        className={`flex flex-col items-center justify-between rounded p-1 transition-colors ${
+          open
+            ? "bg-hover text-ink ring-1 ring-hairline"
+            : isSelectionActive
+              ? "bg-accent/20 text-accent ring-1 ring-inset ring-accent/50"
+              : "text-ink hover:bg-hover active:bg-hover"
+        }`}
+        style={{ height: "46px", width: "44px" }}
+      >
+        <div className="flex flex-1 items-center justify-center">
+          <Icon name={currentIcon} size={20} />
+        </div>
+        <Icon name="chevronDown" size={10} />
+      </button>
+
+      {/* Dropdown menu */}
+      {open && (
+        <div
+          className="absolute left-0 top-full z-50 mt-1 w-56 rounded-md border border-hairline bg-surface-raised py-1 shadow-xl text-ink"
+          role="menu"
+        >
+          <div className="px-3 py-1 text-[11px] font-semibold text-ink-muted">
+            Selection shapes
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setTool("select");
+              setOpen(false);
+            }}
+            className={`flex w-full items-center gap-2.5 px-3 py-1.5 text-xs text-left transition-colors hover:bg-hover ${
+              activeToolId === "select" ? "text-accent font-medium" : "text-ink"
+            }`}
+          >
+            <Icon name="select" size={16} />
+            <span className="flex-1">Rectangular selection</span>
+            {activeToolId === "select" && <Icon name="check" size={14} />}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setTool("freeSelect");
+              setOpen(false);
+            }}
+            className={`flex w-full items-center gap-2.5 px-3 py-1.5 text-xs text-left transition-colors hover:bg-hover ${
+              activeToolId === "freeSelect" ? "text-accent font-medium" : "text-ink"
+            }`}
+          >
+            <Icon name="lasso" size={16} />
+            <span className="flex-1">Free-form selection</span>
+            {activeToolId === "freeSelect" && <Icon name="check" size={14} />}
+          </button>
+
+          <div className="my-1 border-t border-hairline" />
+
+          <div className="px-3 py-1 text-[11px] font-semibold text-ink-muted">
+            Selection options
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              A.selectAll();
+              setOpen(false);
+            }}
+            className="flex w-full items-center gap-2.5 px-3 py-1.5 text-xs text-left transition-colors hover:bg-hover text-ink"
+          >
+            <Icon name="selectAll" size={16} />
+            <span className="flex-1">Select all</span>
+            <span className="text-[10px] text-ink-muted">⌘A</span>
+          </button>
+          <button
+            type="button"
+            disabled={!hasSelection}
+            onClick={() => {
+              A.deleteSelection();
+              setOpen(false);
+            }}
+            className={`flex w-full items-center gap-2.5 px-3 py-1.5 text-xs text-left transition-colors ${
+              hasSelection
+                ? "hover:bg-hover text-ink"
+                : "opacity-40 cursor-not-allowed text-ink-muted"
+            }`}
+          >
+            <Icon name="trash" size={16} />
+            <span className="flex-1">Delete</span>
+            <span className="text-[10px] text-ink-muted">⌫</span>
+          </button>
+
+          <div className="my-1 border-t border-hairline" />
+
+          <button
+            type="button"
+            onClick={() => {
+              A.toggleTransparentSelection();
+              setOpen(false);
+            }}
+            className="flex w-full items-center gap-2.5 px-3 py-1.5 text-xs text-left transition-colors hover:bg-hover text-ink"
+          >
+            <Icon name="transparentSelection" size={16} />
+            <span className="flex-1">Transparent selection</span>
+            <div
+              className={`flex h-4 w-4 items-center justify-center rounded border transition-colors ${
+                transparentSelection
+                  ? "border-accent bg-accent text-white"
+                  : "border-hairline bg-surface"
+              }`}
+            >
+              {transparentSelection && <Icon name="check" size={12} />}
+            </div>
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ContextGroup() {
   const activeToolId = usePaintStore((s) => s.activeToolId);
   if (activeToolId === "text")
@@ -55,50 +209,12 @@ export function Toolbar() {
   const activeToolId = usePaintStore((s) => s.activeToolId);
   const setTool = usePaintStore((s) => s.setTool);
   const hasSelection = usePaintStore((s) => s.hasSelection);
-  const transparentSelection = usePaintStore((s) => s.transparentSelection);
 
   return (
     <div className="flex shrink-0 items-stretch gap-1 border-b border-hairline bg-surface px-2 py-1.5 select-none">
       {/* 1. Selection Group */}
       <Group label="Selection">
-        <div className="flex items-center gap-0.5">
-          <button
-            type="button"
-            title="Rectangle selection (S)"
-            onClick={() => setTool("select")}
-            className={`flex flex-col items-center justify-center rounded px-2 py-1 transition-colors ${
-              activeToolId === "select" || activeToolId === "freeSelect"
-                ? "bg-neutral-500/20 text-accent font-medium shadow-xs"
-                : "text-ink hover:bg-neutral-500/10 active:bg-neutral-500/20"
-            }`}
-            style={{ height: "46px", width: "44px" }}
-          >
-            <Icon name="select" size={20} />
-            <Icon name="chevronDown" size={10} />
-          </button>
-
-          {/* Quick Select Aux Buttons */}
-          <div className="flex flex-col gap-0.5">
-            <ToolButton
-              title="Free-form selection (Lasso)"
-              active={activeToolId === "freeSelect"}
-              onClick={() => setTool("freeSelect")}
-            >
-              <Icon name="lasso" size={14} />
-            </ToolButton>
-            <ToolButton
-              title={
-                transparentSelection
-                  ? "Transparent selection: ON (Color 2 is transparent)"
-                  : "Transparent selection: OFF (Background is opaque)"
-              }
-              active={transparentSelection}
-              onClick={A.toggleTransparentSelection}
-            >
-              <span className="text-[10px] font-bold">Tr</span>
-            </ToolButton>
-          </div>
-        </div>
+        <SelectionDropdown />
       </Group>
 
       <Divider />
@@ -199,8 +315,8 @@ export function Toolbar() {
           onClick={() => setTool("brush")}
           className={`flex flex-col items-center justify-center rounded px-2.5 py-1 transition-colors ${
             activeToolId === "brush"
-              ? "bg-neutral-500/20 text-accent font-medium shadow-xs"
-              : "text-ink hover:bg-neutral-500/10 active:bg-neutral-500/20"
+              ? "bg-accent/20 text-accent ring-1 ring-inset ring-accent/50"
+              : "text-ink hover:bg-hover active:bg-hover"
           }`}
           style={{ height: "46px", width: "44px" }}
         >
